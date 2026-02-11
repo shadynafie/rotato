@@ -75,8 +75,8 @@ The app will be available at `http://localhost:3001`
 ### Docker Run (Alternative)
 
 ```bash
-# Pull the image
-docker pull shadynafie/rotato:latest
+# Pull the image from GitHub Container Registry
+docker pull ghcr.io/shadynafie/rotato:latest
 
 # Run with persistent data
 docker run -d \
@@ -84,7 +84,7 @@ docker run -d \
   -p 3001:3001 \
   -v $(pwd)/data:/data \
   -e JWT_SECRET="your-secure-random-secret-here" \
-  shadynafie/rotato:latest
+  ghcr.io/shadynafie/rotato:latest
 ```
 
 ### Portainer Stack
@@ -94,7 +94,7 @@ version: '3.8'
 
 services:
   rota-manager:
-    image: shadynafie/rotato:latest
+    image: ghcr.io/shadynafie/rotato:latest
     container_name: rota-manager
     ports:
       - "3001:3001"

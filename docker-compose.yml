@@ -2,8 +2,7 @@ version: '3.8'
 
 services:
   rota-manager:
-    build: .
-    image: rotato:latest
+    image: ghcr.io/shadynafie/rotato:latest
     container_name: rota-manager
     ports:
       - "3001:3001"
