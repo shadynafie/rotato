@@ -1,0 +1,522 @@
+import { ActionIcon, Badge, Box, Button, Group, Loader, Modal, Select, Table, Text, Textarea, Tooltip } from '@mantine/core';
+import { DatePickerInput } from '@mantine/dates';
+import { modals } from '@mantine/modals';
+import { notifications } from '@mantine/notifications';
+import React, { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import api from '../../api/client';
+
+interface Clinician {
+  id: number;
+  name: string;
+  role: string;
+}
+
+interface Leave {
+  id: number;
+  clinicianId: number;
+  date: string;
+  session: string;
+  type: string;
+  note: string | null;
+  clinician: Clinician;
+}
+
+const LEAVE_TYPES = [
+  { value: 'annual', label: 'Annual Leave' },
+  { value: 'study', label: 'Study Leave' },
+  { value: 'sick', label: 'Sick Leave' },
+  { value: 'professional', label: 'Professional Leave' },
+];
+
+const SESSIONS = [
+  { value: 'FULL', label: 'Full Day' },
+  { value: 'AM', label: 'Morning (AM)' },
+  { value: 'PM', label: 'Afternoon (PM)' },
+];
+
+const fetchLeaves = async () => {
+  const res = await api.get<Leave[]>('/api/leaves');
+  return res.data;
+};
+
+const fetchClinicians = async () => {
+  const res = await api.get<Clinician[]>('/api/clinicians');
+  return res.data;
+};
+
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function getLeaveTypeColor(type: string): string {
+  switch (type) {
+    case 'annual': return 'blue';
+    case 'study': return 'grape';
+    case 'sick': return 'red';
+    case 'professional': return 'teal';
+    default: return 'gray';
+  }
+}
+
+// Calculate number of days between two dates (inclusive)
+function getDayCount(from: Date | null, to: Date | null): number {
+  if (!from || !to) return 0;
+  const diffTime = Math.abs(to.getTime() - from.getTime());
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+}
+
+export const LeavesPage: React.FC = () => {
+  const qc = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [clinicianId, setClinicianId] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
+  const [session, setSession] = useState<string | null>('FULL');
+  const [leaveType, setLeaveType] = useState<string | null>('annual');
+  const [note, setNote] = useState('');
+
+  const leavesQuery = useQuery({ queryKey: ['leaves'], queryFn: fetchLeaves });
+  const cliniciansQuery = useQuery({ queryKey: ['clinicians'], queryFn: fetchClinicians });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const [fromDate, toDate] = dateRange;
+      // If only one date selected, treat as single day
+      const effectiveToDate = toDate || fromDate;
+
+      return api.post('/api/leaves/bulk', {
+        clinicianId: Number(clinicianId),
+        fromDate: fromDate?.toISOString(),
+        toDate: effectiveToDate?.toISOString(),
+        session,
+        type: leaveType,
+        note: note || undefined,
+      });
+    },
+    onSuccess: (response) => {
+      qc.invalidateQueries({ queryKey: ['leaves'] });
+      qc.invalidateQueries({ queryKey: ['schedule'] });
+      const count = response.data?.count || 1;
+      notifications.show({
+        title: 'Success',
+        message: `${count} day${count > 1 ? 's' : ''} of leave added successfully`,
+        color: 'green',
+      });
+      closeModal();
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error?.response?.data?.message || error?.message || 'Failed to add leave',
+        color: 'red',
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => api.delete(`/api/leaves/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leaves'] });
+      qc.invalidateQueries({ queryKey: ['schedule'] });
+      notifications.show({
+        title: 'Success',
+        message: 'Leave deleted successfully',
+        color: 'green',
+      });
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error?.response?.data?.message || error?.message || 'Failed to delete leave',
+        color: 'red',
+      });
+    },
+  });
+
+  const openAddModal = () => {
+    setClinicianId(null);
+    setDateRange([null, null]);
+    setSession('FULL');
+    setLeaveType('annual');
+    setNote('');
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+  };
+
+  const confirmDelete = (leave: Leave) => {
+    modals.openConfirmModal({
+      title: 'Delete Leave',
+      children: (
+        <Text size="sm">
+          Are you sure you want to delete the leave for <strong>{leave.clinician.name}</strong> on {formatDate(leave.date)}?
+        </Text>
+      ),
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => deleteMutation.mutate(leave.id),
+    });
+  };
+
+  const onSave = async () => {
+    if (!clinicianId || !dateRange[0] || !session || !leaveType) return;
+    await createMutation.mutateAsync();
+  };
+
+  const dayCount = getDayCount(dateRange[0], dateRange[1] || dateRange[0]);
+
+  const isLoading = leavesQuery.isLoading || cliniciansQuery.isLoading;
+  const isSaving = createMutation.isPending;
+
+  // Group leaves by upcoming vs past
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const upcomingLeaves = (leavesQuery.data || []).filter((l) => new Date(l.date) >= today);
+  const pastLeaves = (leavesQuery.data || []).filter((l) => new Date(l.date) < today);
+
+  return (
+    <Box>
+      {/* Page Header */}
+      <Group justify="space-between" mb={32}>
+        <Box>
+          <Text
+            style={{
+              fontSize: '2rem',
+              fontWeight: 700,
+              color: '#1d1d1f',
+              letterSpacing: '-0.025em',
+              marginBottom: 8,
+            }}
+          >
+            Leave Management
+          </Text>
+          <Text style={{ fontSize: '1.0625rem', color: '#86868b' }}>
+            Record and manage staff leave
+          </Text>
+        </Box>
+        <Button
+          onClick={openAddModal}
+          leftSection={
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          }
+        >
+          Add Leave
+        </Button>
+      </Group>
+
+      {/* Loading */}
+      {isLoading && (
+        <Box ta="center" py={60}>
+          <Loader size="lg" color="#0071e3" />
+        </Box>
+      )}
+
+      {/* Empty State */}
+      {!isLoading && leavesQuery.data && leavesQuery.data.length === 0 && (
+        <Box
+          ta="center"
+          py={60}
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: 16,
+            border: '1px solid rgba(0, 0, 0, 0.06)',
+          }}
+        >
+          <Box
+            style={{
+              width: 64,
+              height: 64,
+              backgroundColor: '#f5f5f7',
+              borderRadius: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+            }}
+          >
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#86868b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+          </Box>
+          <Text fw={500} c="#1d1d1f" mb={4}>No leave recorded</Text>
+          <Text c="dimmed" size="sm">Add leave entries to track staff absences</Text>
+        </Box>
+      )}
+
+      {/* Upcoming Leaves */}
+      {!isLoading && upcomingLeaves.length > 0 && (
+        <Box
+          mb={24}
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: 16,
+            overflow: 'hidden',
+            border: '1px solid rgba(0, 0, 0, 0.06)',
+          }}
+        >
+          <Box
+            px={24}
+            py={16}
+            style={{
+              backgroundColor: '#fafafa',
+              borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+            }}
+          >
+            <Group gap="sm">
+              <Badge variant="light" color="blue" size="lg" radius="md">
+                Upcoming
+              </Badge>
+              <Text c="dimmed" size="sm">{upcomingLeaves.length} entries</Text>
+            </Group>
+          </Box>
+          <Table verticalSpacing="md" horizontalSpacing="lg">
+            <Table.Thead>
+              <Table.Tr style={{ backgroundColor: '#fafafa' }}>
+                <Table.Th>Date</Table.Th>
+                <Table.Th>Clinician</Table.Th>
+                <Table.Th>Session</Table.Th>
+                <Table.Th>Type</Table.Th>
+                <Table.Th>Note</Table.Th>
+                <Table.Th style={{ width: 80 }}>Actions</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {upcomingLeaves.map((leave) => (
+                <Table.Tr key={leave.id}>
+                  <Table.Td>
+                    <Text fw={500} c="#1d1d1f">{formatDate(leave.date)}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text>{leave.clinician.name}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge variant="light" color="gray" size="sm">
+                      {leave.session}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge variant="light" color={getLeaveTypeColor(leave.type)} size="sm">
+                      {LEAVE_TYPES.find((t) => t.value === leave.type)?.label || leave.type}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text c="dimmed" size="sm" lineClamp={1}>{leave.note || '—'}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Tooltip label="Delete leave" withArrow>
+                      <ActionIcon
+                        variant="light"
+                        color="red"
+                        onClick={() => confirmDelete(leave)}
+                        radius="md"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3,6 5,6 21,6"/>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                          <line x1="10" y1="11" x2="10" y2="17"/>
+                          <line x1="14" y1="11" x2="14" y2="17"/>
+                        </svg>
+                      </ActionIcon>
+                    </Tooltip>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Box>
+      )}
+
+      {/* Past Leaves */}
+      {!isLoading && pastLeaves.length > 0 && (
+        <Box
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: 16,
+            overflow: 'hidden',
+            border: '1px solid rgba(0, 0, 0, 0.06)',
+          }}
+        >
+          <Box
+            px={24}
+            py={16}
+            style={{
+              backgroundColor: '#fafafa',
+              borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+            }}
+          >
+            <Group gap="sm">
+              <Badge variant="light" color="gray" size="lg" radius="md">
+                Past
+              </Badge>
+              <Text c="dimmed" size="sm">{pastLeaves.length} entries</Text>
+            </Group>
+          </Box>
+          <Table verticalSpacing="md" horizontalSpacing="lg">
+            <Table.Thead>
+              <Table.Tr style={{ backgroundColor: '#fafafa' }}>
+                <Table.Th>Date</Table.Th>
+                <Table.Th>Clinician</Table.Th>
+                <Table.Th>Session</Table.Th>
+                <Table.Th>Type</Table.Th>
+                <Table.Th>Note</Table.Th>
+                <Table.Th style={{ width: 80 }}>Actions</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {pastLeaves.map((leave) => (
+                <Table.Tr key={leave.id} style={{ opacity: 0.6 }}>
+                  <Table.Td>
+                    <Text fw={500} c="#1d1d1f">{formatDate(leave.date)}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text>{leave.clinician.name}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge variant="light" color="gray" size="sm">
+                      {leave.session}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge variant="light" color={getLeaveTypeColor(leave.type)} size="sm">
+                      {LEAVE_TYPES.find((t) => t.value === leave.type)?.label || leave.type}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text c="dimmed" size="sm" lineClamp={1}>{leave.note || '—'}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Tooltip label="Delete leave" withArrow>
+                      <ActionIcon
+                        variant="light"
+                        color="red"
+                        onClick={() => confirmDelete(leave)}
+                        radius="md"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3,6 5,6 21,6"/>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                          <line x1="10" y1="11" x2="10" y2="17"/>
+                          <line x1="14" y1="11" x2="14" y2="17"/>
+                        </svg>
+                      </ActionIcon>
+                    </Tooltip>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Box>
+      )}
+
+      {/* Add Leave Modal */}
+      <Modal
+        opened={modalOpen}
+        onClose={closeModal}
+        title={
+          <Text fw={600} size="lg">Add Leave</Text>
+        }
+        size="md"
+      >
+        <Box>
+          <Box mb={16}>
+            <Select
+              label="Clinician"
+              placeholder="Select clinician"
+              data={(cliniciansQuery.data || []).map((c) => ({
+                value: String(c.id),
+                label: `${c.name} (${c.role})`,
+              }))}
+              value={clinicianId}
+              onChange={setClinicianId}
+              required
+              searchable
+              styles={{
+                label: { marginBottom: 8, fontWeight: 500 },
+              }}
+            />
+          </Box>
+          <Box mb={16}>
+            <DatePickerInput
+              type="range"
+              label="Date Range"
+              placeholder="Select dates"
+              value={dateRange}
+              onChange={setDateRange}
+              required
+              allowSingleDateInRange
+              styles={{
+                label: { marginBottom: 8, fontWeight: 500 },
+              }}
+            />
+            {dayCount > 0 && (
+              <Text size="sm" c="dimmed" mt={4}>
+                {dayCount} day{dayCount > 1 ? 's' : ''} selected
+              </Text>
+            )}
+          </Box>
+          <Box mb={16}>
+            <Select
+              label="Session"
+              data={SESSIONS}
+              value={session}
+              onChange={setSession}
+              required
+              styles={{
+                label: { marginBottom: 8, fontWeight: 500 },
+              }}
+            />
+          </Box>
+          <Box mb={16}>
+            <Select
+              label="Leave Type"
+              data={LEAVE_TYPES}
+              value={leaveType}
+              onChange={setLeaveType}
+              required
+              styles={{
+                label: { marginBottom: 8, fontWeight: 500 },
+              }}
+            />
+          </Box>
+          <Box mb={24}>
+            <Textarea
+              label="Note (optional)"
+              placeholder="Add any notes..."
+              value={note}
+              onChange={(e) => setNote(e.currentTarget.value)}
+              styles={{
+                label: { marginBottom: 8, fontWeight: 500 },
+              }}
+            />
+          </Box>
+          <Group justify="flex-end" gap="sm">
+            <Button variant="subtle" color="gray" onClick={closeModal}>
+              Cancel
+            </Button>
+            <Button
+              onClick={onSave}
+              loading={isSaving}
+              disabled={!clinicianId || !dateRange[0] || !session || !leaveType}
+            >
+              {dayCount > 1 ? `Add ${dayCount} Days` : 'Add Leave'}
+            </Button>
+          </Group>
+        </Box>
+      </Modal>
+    </Box>
+  );
+};

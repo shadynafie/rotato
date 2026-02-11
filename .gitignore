@@ -1,0 +1,23 @@
+node_modules
+.pnpm-store
+dist
+.dist
+.DS_Store
+.env
+.env.local
+coverage
+.prisma
+.idea
+.vscode
+npm-debug.log*
+yarn-error.log
+pnpm-lock.yaml
+
+# Database files
+*.db
+*.db-journal
+data/
+
+# Build outputs
+packages/api/dist
+packages/web/dist

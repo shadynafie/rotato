@@ -1,0 +1,410 @@
+import { Badge, Box, Button, Group, Loader, NumberInput, Select, SimpleGrid, Table, Text, TextInput } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import api from '../../api/client';
+
+type Slot = { role: 'consultant' | 'registrar'; cycleLength: number; position: number; clinicianId: number; startDate?: string | null };
+type Clinician = { id: number; name: string; role: 'consultant' | 'registrar' };
+
+const fetchData = async () => {
+  const [cyclesRes, cliniciansRes] = await Promise.all([
+    api.get<Slot[]>('/api/oncall-cycles'),
+    api.get<Clinician[]>('/api/clinicians')
+  ]);
+  return { cycles: cyclesRes.data, clinicians: cliniciansRes.data };
+};
+
+export const OncallPage: React.FC = () => {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ['oncall', 'data'], queryFn: fetchData });
+  const [consCycleLength, setConsCycleLength] = useState(7);
+  const [regCycleLength, setRegCycleLength] = useState(7);
+  const [consStartDate, setConsStartDate] = useState('2024-01-01');
+  const [regStartDate, setRegStartDate] = useState('2024-01-01');
+  const [slots, setSlots] = useState<Slot[]>([]);
+
+  useEffect(() => {
+    if (data?.cycles) {
+      const cons = data.cycles.find((c) => c.role === 'consultant');
+      if (cons) {
+        setConsCycleLength(cons.cycleLength);
+        setConsStartDate(cons.startDate ? cons.startDate.slice(0, 10) : '2024-01-01');
+      }
+      const reg = data.cycles.find((c) => c.role === 'registrar');
+      if (reg) {
+        setRegCycleLength(reg.cycleLength);
+        setRegStartDate(reg.startDate ? reg.startDate.slice(0, 10) : '2024-01-01');
+      }
+      setSlots(data.cycles);
+    }
+  }, [data]);
+
+  const clinicianOptions = useMemo(
+    () =>
+      (data?.clinicians || []).map((c) => ({
+        value: c.id.toString(),
+        label: c.name,
+        role: c.role
+      })),
+    [data?.clinicians]
+  );
+
+  const updateSlot = (role: 'consultant' | 'registrar', position: number, clinicianId: number) => {
+    setSlots((prev) => {
+      const other = prev.filter((s) => !(s.role === role && s.position === position));
+      return [
+        ...other,
+        {
+          role,
+          position,
+          clinicianId,
+          cycleLength: role === 'consultant' ? consCycleLength : regCycleLength,
+          startDate: role === 'consultant' ? consStartDate : regStartDate
+        }
+      ];
+    });
+  };
+
+  const addSlot = (role: 'consultant' | 'registrar') => {
+    const roleSlots = slots.filter((s) => s.role === role);
+    const nextPos = roleSlots.length ? Math.max(...roleSlots.map((s) => s.position)) + 1 : 1;
+    const first = clinicianOptions.find((c) => c.role === role);
+    setSlots((prev) => [
+      ...prev,
+      {
+        role,
+        position: nextPos,
+        clinicianId: first ? Number(first.value) : 0,
+        cycleLength: role === 'consultant' ? consCycleLength : regCycleLength,
+        startDate: role === 'consultant' ? consStartDate : regStartDate
+      }
+    ]);
+  };
+
+  const deleteSlot = (role: 'consultant' | 'registrar', position: number) => {
+    setSlots((prev) => prev.filter((s) => !(s.role === role && s.position === position)));
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const consultantSlots = slots.filter((c) => c.role === 'consultant');
+      const registrarSlots = slots.filter((c) => c.role === 'registrar');
+      return api.put('/api/oncall-cycles', {
+        consultant: {
+          cycleLength: consCycleLength,
+          startDate: consStartDate,
+          slots: consultantSlots.map(({ position, clinicianId }) => ({ position, clinicianId }))
+        },
+        registrar: {
+          cycleLength: regCycleLength,
+          startDate: regStartDate,
+          slots: registrarSlots.map(({ position, clinicianId }) => ({ position, clinicianId }))
+        }
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['oncall', 'data'] });
+      notifications.show({
+        title: 'Success',
+        message: 'On-call cycles saved successfully',
+        color: 'green',
+      });
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error?.response?.data?.message || error?.message || 'Failed to save on-call cycles',
+        color: 'red',
+      });
+    },
+  });
+
+  const consultantSlots = slots.filter((c) => c.role === 'consultant').sort((a, b) => a.position - b.position);
+  const registrarSlots = slots.filter((c) => c.role === 'registrar').sort((a, b) => a.position - b.position);
+
+  return (
+    <Box>
+      {/* Page Header */}
+      <Group justify="space-between" mb={32}>
+        <Box>
+          <Text
+            style={{
+              fontSize: '2rem',
+              fontWeight: 700,
+              color: '#1d1d1f',
+              letterSpacing: '-0.025em',
+              marginBottom: 8,
+            }}
+          >
+            On-Call Cycles
+          </Text>
+          <Text style={{ fontSize: '1.0625rem', color: '#86868b' }}>
+            Configure rotating on-call schedules for consultants and registrars
+          </Text>
+        </Box>
+        <Button
+          onClick={() => saveMutation.mutate()}
+          loading={saveMutation.isPending}
+          leftSection={
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+          }
+        >
+          Save Changes
+        </Button>
+      </Group>
+
+      {/* Loading State */}
+      {isLoading && (
+        <Box ta="center" py={60}>
+          <Loader size="lg" color="#0071e3" />
+          <Text mt="md" c="dimmed">Loading on-call cycles...</Text>
+        </Box>
+      )}
+
+      {data && (
+        <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
+          {/* Consultant Cycle Card */}
+          <Box
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: 16,
+              overflow: 'hidden',
+              border: '1px solid rgba(0, 0, 0, 0.06)',
+            }}
+          >
+            {/* Card Header */}
+            <Box
+              px={24}
+              py={20}
+              style={{
+                backgroundColor: '#fafafa',
+                borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+              }}
+            >
+              <Group justify="space-between" align="center">
+                <Group gap="sm">
+                  <Box
+                    style={{
+                      width: 40,
+                      height: 40,
+                      backgroundColor: 'rgba(0, 113, 227, 0.1)',
+                      borderRadius: 10,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0071e3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                    </svg>
+                  </Box>
+                  <Box>
+                    <Text fw={600} c="#1d1d1f">Consultants</Text>
+                    <Text size="sm" c="dimmed">On-call rotation</Text>
+                  </Box>
+                </Group>
+                <Group gap="xs">
+                  <Badge variant="light" color="blue" radius="md">
+                    {consCycleLength} week cycle
+                  </Badge>
+                  <Button size="xs" variant="light" onClick={() => addSlot('consultant')}>
+                    Add Slot
+                  </Button>
+                </Group>
+              </Group>
+            </Box>
+
+            {/* Cycle Length */}
+            <Box px={24} py={16} style={{ borderBottom: '1px solid rgba(0, 0, 0, 0.04)' }}>
+              <Text size="sm" fw={500} c="#1d1d1f" mb={8}>Cycle Length (weeks)</Text>
+              <NumberInput
+                value={consCycleLength}
+                onChange={(v) => setConsCycleLength(Number(v) || 1)}
+                min={1}
+                max={52}
+                style={{ maxWidth: 120 }}
+              />
+              <TextInput
+                mt="sm"
+                label="Cycle start date"
+                type="date"
+                value={consStartDate}
+                onChange={(e) => setConsStartDate(e.currentTarget.value)}
+                styles={{ input: { maxWidth: 220 } }}
+              />
+            </Box>
+
+            {/* Slots Table */}
+            {consultantSlots.length > 0 ? (
+              <Table verticalSpacing="sm" horizontalSpacing="lg">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th style={{ width: 100 }}>Position</Table.Th>
+                    <Table.Th>Clinician</Table.Th>
+                    <Table.Th style={{ width: 120 }}>Actions</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {consultantSlots.map((slot) => (
+                    <Table.Tr key={`c-${slot.position}`}>
+                      <Table.Td>
+                        <Badge variant="light" color="gray" radius="md">
+                          #{slot.position}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Select
+                          data={clinicianOptions.filter((c) => c.role === 'consultant')}
+                          value={slot.clinicianId.toString()}
+                          onChange={(v) => v && updateSlot('consultant', slot.position, Number(v))}
+                          placeholder="Select clinician"
+                        />
+                      </Table.Td>
+                      <Table.Td>
+                        <Button
+                          size="xs"
+                          variant="subtle"
+                          color="red"
+                          onClick={() => deleteSlot('consultant', slot.position)}
+                        >
+                          Delete
+                        </Button>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            ) : (
+              <Box px={24} py={32} ta="center">
+                <Text c="dimmed" size="sm">No consultant slots configured</Text>
+              </Box>
+            )}
+          </Box>
+
+          {/* Registrar Cycle Card */}
+          <Box
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: 16,
+              overflow: 'hidden',
+              border: '1px solid rgba(0, 0, 0, 0.06)',
+            }}
+          >
+            {/* Card Header */}
+            <Box
+              px={24}
+              py={20}
+              style={{
+                backgroundColor: '#fafafa',
+                borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+              }}
+            >
+              <Group justify="space-between" align="center">
+                <Group gap="sm">
+                  <Box
+                    style={{
+                      width: 40,
+                      height: 40,
+                      backgroundColor: 'rgba(175, 82, 222, 0.1)',
+                      borderRadius: 10,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#af52de" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                    </svg>
+                  </Box>
+                  <Box>
+                    <Text fw={600} c="#1d1d1f">Registrars</Text>
+                    <Text size="sm" c="dimmed">On-call rotation</Text>
+                  </Box>
+                </Group>
+                <Group gap="xs">
+                  <Badge variant="light" color="grape" radius="md">
+                    {regCycleLength} day cycle
+                  </Badge>
+                  <Button size="xs" variant="light" onClick={() => addSlot('registrar')}>
+                    Add Slot
+                  </Button>
+                </Group>
+              </Group>
+            </Box>
+
+            {/* Cycle Length */}
+            <Box px={24} py={16} style={{ borderBottom: '1px solid rgba(0, 0, 0, 0.04)' }}>
+              <Text size="sm" fw={500} c="#1d1d1f" mb={8}>Cycle Length (days)</Text>
+              <NumberInput
+                value={regCycleLength}
+                onChange={(v) => setRegCycleLength(Number(v) || 1)}
+                min={1}
+                max={365}
+                style={{ maxWidth: 120 }}
+              />
+              <TextInput
+                mt="sm"
+                label="Cycle start date"
+                type="date"
+                value={regStartDate}
+                onChange={(e) => setRegStartDate(e.currentTarget.value)}
+                styles={{ input: { maxWidth: 220 } }}
+              />
+            </Box>
+
+            {/* Slots Table */}
+            {registrarSlots.length > 0 ? (
+              <Table verticalSpacing="sm" horizontalSpacing="lg">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th style={{ width: 100 }}>Position</Table.Th>
+                    <Table.Th>Clinician</Table.Th>
+                    <Table.Th style={{ width: 120 }}>Actions</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {registrarSlots.map((slot) => (
+                    <Table.Tr key={`r-${slot.position}`}>
+                      <Table.Td>
+                        <Badge variant="light" color="gray" radius="md">
+                          #{slot.position}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Select
+                          data={clinicianOptions.filter((c) => c.role === 'registrar')}
+                          value={slot.clinicianId.toString()}
+                          onChange={(v) => v && updateSlot('registrar', slot.position, Number(v))}
+                          placeholder="Select clinician"
+                        />
+                      </Table.Td>
+                      <Table.Td>
+                        <Button
+                          size="xs"
+                          variant="subtle"
+                          color="red"
+                          onClick={() => deleteSlot('registrar', slot.position)}
+                        >
+                          Delete
+                        </Button>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            ) : (
+              <Box px={24} py={32} ta="center">
+                <Text c="dimmed" size="sm">No registrar slots configured</Text>
+              </Box>
+            )}
+          </Box>
+        </SimpleGrid>
+      )}
+    </Box>
+  );
+};

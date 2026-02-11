@@ -1,0 +1,158 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Note: SQLite doesn't support enums, so we use String with validation in code
+// ClinicianRole: "consultant" | "registrar"
+// Session: "AM" | "PM" | "FULL"
+// RotaSource: "jobplan" | "oncall" | "manual" | "leave"
+// LeaveType: "annual" | "study" | "sick" | "professional"
+// NotificationChannel: "email" | "whatsapp_stub"
+// NotificationType: "change" | "digest" | "test"
+// NotificationStatus: "pending" | "sent" | "failed"
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  role         String   @default("admin")
+  createdAt    DateTime @default(now())
+  createdRota  RotaEntry[] @relation("createdByUser")
+  updatedRota  RotaEntry[] @relation("updatedByUser")
+  auditLogs    AuditLog[]
+}
+
+model Clinician {
+  id              Int           @id @default(autoincrement())
+  name            String
+  role            String        // "consultant" | "registrar"
+  email           String?
+  notifyEmail     Boolean       @default(true)
+  notifyWhatsapp  Boolean       @default(false)
+  active          Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  jobPlanWeeks    JobPlanWeek[]
+  oncallSlots     OncallCycle[]
+  rotaEntries     RotaEntry[]
+  leaves          Leave[]
+  notifications   Notification[]
+}
+
+model Duty {
+  id          Int           @id @default(autoincrement())
+  name        String
+  color       String?
+  active      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  jobPlanAm   JobPlanWeek[] @relation("JobPlanWeek_amDuty")
+  jobPlanPm   JobPlanWeek[] @relation("JobPlanWeek_pmDuty")
+  rotaEntries RotaEntry[]
+}
+
+model JobPlanWeek {
+  id          Int      @id @default(autoincrement())
+  clinician   Clinician @relation(fields: [clinicianId], references: [id])
+  clinicianId Int
+  weekNo      Int       // 1-5 (week of the month)
+  dayOfWeek   Int       // 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday
+  amDuty      Duty?    @relation("JobPlanWeek_amDuty", fields: [amDutyId], references: [id])
+  amDutyId    Int?
+  pmDuty      Duty?    @relation("JobPlanWeek_pmDuty", fields: [pmDutyId], references: [id])
+  pmDutyId    Int?
+  notes       String?
+
+  @@unique([clinicianId, weekNo, dayOfWeek])
+}
+
+model OncallCycle {
+  id           Int      @id @default(autoincrement())
+  role         String   // "consultant" | "registrar"
+  cycleLength  Int
+  position     Int
+  clinician    Clinician @relation(fields: [clinicianId], references: [id])
+  clinicianId  Int
+  startDate    DateTime?
+
+  @@unique([role, position])
+}
+
+model RotaEntry {
+  id          Int        @id @default(autoincrement())
+  date        DateTime
+  clinician   Clinician  @relation(fields: [clinicianId], references: [id])
+  clinicianId Int
+  session     String     // "AM" | "PM" | "FULL"
+  duty        Duty?      @relation(fields: [dutyId], references: [id])
+  dutyId      Int?
+  isOncall    Boolean    @default(false)
+  source      String     // "jobplan" | "oncall" | "manual" | "leave"
+  note        String?
+  createdBy   Int?
+  updatedBy   Int?
+  createdByUser User?    @relation("createdByUser", fields: [createdBy], references: [id])
+  updatedByUser User?    @relation("updatedByUser", fields: [updatedBy], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([date, clinicianId, session])
+  @@index([date])
+  @@index([date, isOncall])
+}
+
+model Leave {
+  id          Int        @id @default(autoincrement())
+  clinician   Clinician  @relation(fields: [clinicianId], references: [id])
+  clinicianId Int
+  date        DateTime
+  session     String     // "AM" | "PM" | "FULL"
+  type        String     // "annual" | "study" | "sick" | "professional"
+  note        String?
+  createdBy   Int?
+  createdAt   DateTime   @default(now())
+
+  @@unique([clinicianId, date, session])
+  @@index([date])
+}
+
+model Notification {
+  id          Int       @id @default(autoincrement())
+  clinician   Clinician? @relation(fields: [clinicianId], references: [id])
+  clinicianId Int?
+  channel     String    // "email" | "whatsapp_stub"
+  type        String    // "change" | "digest" | "test"
+  payload     String?   // JSON stored as string
+  status      String    @default("pending") // "pending" | "sent" | "failed"
+  error       String?
+  sentAt      DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  actor       User?    @relation(fields: [actorUserId], references: [id])
+  actorUserId Int?
+  action      String
+  entity      String
+  entityId    Int?
+  before      String?  // JSON stored as string
+  after       String?  // JSON stored as string
+  createdAt   DateTime @default(now())
+
+  @@index([entity, entityId])
+}
+
+model ShareToken {
+  id          Int      @id @default(autoincrement())
+  token       String   @unique
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  lastUsedAt  DateTime?
+}

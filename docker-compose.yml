@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  rota-manager:
+    build: .
+    image: rotato:latest
+    container_name: rota-manager
+    ports:
+      - "3001:3001"
+    volumes:
+      # Map data folder for persistent SQLite database
+      - ./data:/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_URL=file:/data/rota.db
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
+      - CORS_ORIGIN=*
+      - SERVE_STATIC=true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s

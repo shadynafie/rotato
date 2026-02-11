@@ -1,0 +1,41 @@
+# Dependencies
+node_modules
+*/node_modules
+**/node_modules
+
+# Build outputs
+packages/api/dist
+packages/web/dist
+
+# Development files
+*.log
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Database files (these should be mounted as volumes)
+*.db
+*.db-journal
+data/
+
+# Documentation
+README.md
+CLAUDE.md
+*.md
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore

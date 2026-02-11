@@ -1,0 +1,304 @@
+openapi: 3.0.3
+info:
+  title: Rota Manager API
+  version: 0.1.0
+servers:
+  - url: https://api.example.com
+    description: Production (replace)
+  - url: http://localhost:3000
+    description: Local dev
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Clinician:
+      type: object
+      required: [id, name, role, active]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        role: { type: string, enum: [consultant, registrar] }
+        email: { type: string, format: email }
+        notifyEmail: { type: boolean }
+        notifyWhatsapp: { type: boolean }
+        active: { type: boolean }
+    Duty:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        color: { type: string }
+        active: { type: boolean }
+    RotaEntry:
+      type: object
+      required: [id, date, session, clinicianId, source]
+      properties:
+        id: { type: integer }
+        date: { type: string, format: date }
+        session: { type: string, enum: [AM, PM, FULL] }
+        clinicianId: { type: integer }
+        dutyId: { type: integer, nullable: true }
+        isOncall: { type: boolean }
+        source: { type: string, enum: [jobplan, oncall, manual, leave] }
+        note: { type: string }
+    Leave:
+      type: object
+      required: [id, date, session, clinicianId, type]
+      properties:
+        id: { type: integer }
+        date: { type: string, format: date }
+        session: { type: string, enum: [AM, PM, FULL] }
+        clinicianId: { type: integer }
+        type: { type: string, enum: [annual, study, sick, professional] }
+        note: { type: string }
+security:
+  - bearerAuth: []
+paths:
+  /api/auth/login:
+    post:
+      summary: Login as admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: JWT issued
+  /api/clinicians:
+    get:
+      summary: List clinicians
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Clinician' }
+    post:
+      summary: Create clinician
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, role]
+              properties:
+                name: { type: string }
+                role: { type: string, enum: [consultant, registrar] }
+                email: { type: string, format: email }
+      responses:
+        '201': { description: Created }
+  /api/clinicians/{id}:
+    patch:
+      summary: Update clinician
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Clinician' }
+      responses:
+        '200': { description: Updated }
+    delete:
+      summary: Delete clinician
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Deleted }
+  /api/duties:
+    get:
+      summary: List duties
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Duty' }
+    post:
+      summary: Create duty
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                color: { type: string }
+      responses:
+        '201': { description: Created }
+  /api/job-plans:
+    get:
+      summary: Get job plan weeks
+      responses:
+        '200': { description: OK }
+    put:
+      summary: Upsert job plan weeks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                required: [clinicianId, weekNo]
+                properties:
+                  clinicianId: { type: integer }
+                  weekNo: { type: integer, minimum: 1, maximum: 5 }
+                  amDutyId: { type: integer, nullable: true }
+                  pmDutyId: { type: integer, nullable: true }
+      responses:
+        '200': { description: Saved }
+  /api/oncall-cycles:
+    get:
+      summary: Get on-call cycle definitions
+      responses:
+        '200': { description: OK }
+    put:
+      summary: Upsert on-call cycle definitions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                consultant:
+                  type: object
+                  properties:
+                    cycleLength: { type: integer }
+                    slots:
+                      type: array
+                      items:
+                        type: object
+                        required: [position, clinicianId]
+                        properties:
+                          position: { type: integer }
+                          clinicianId: { type: integer }
+                registrar:
+                  $ref: '#/paths/~1api~1oncall-cycles/put/requestBody/content/application~1json/schema/properties/consultant'
+      responses:
+        '200': { description: Saved }
+  /api/rota/generate:
+    post:
+      summary: Generate rota entries from templates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, to]
+              properties:
+                from: { type: string, format: date }
+                to: { type: string, format: date }
+      responses:
+        '200': { description: Generated }
+  /api/rota:
+    get:
+      summary: List rota entries
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+        - in: query
+          name: clinicianId
+          schema: { type: integer }
+        - in: query
+          name: role
+          schema: { type: string, enum: [consultant, registrar] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RotaEntry' }
+  /api/rota/{id}:
+    patch:
+      summary: Override rota entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dutyId: { type: integer, nullable: true }
+                isOncall: { type: boolean }
+                source: { type: string, enum: [manual, leave] }
+                note: { type: string }
+      responses:
+        '200': { description: Updated }
+  /api/leaves:
+    post:
+      summary: Create leave entry (full or half day)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clinicianId, date, session, type]
+              properties:
+                clinicianId: { type: integer }
+                date: { type: string, format: date }
+                session: { type: string, enum: [AM, PM, FULL] }
+                type: { type: string, enum: [annual, study, sick, professional] }
+                note: { type: string }
+      responses:
+        '201': { description: Created }
+    get:
+      summary: List leave entries
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+      responses:
+        '200': { description: OK }
+  /public/{token}/calendar:
+    get:
+      summary: Public read-only calendar data
+      security: []
+      responses:
+        '200': { description: OK }
+  /public/{token}/ical:
+    get:
+      summary: Public iCal feed
+      security: []
+      responses:
+        '200': { description: iCal feed }
