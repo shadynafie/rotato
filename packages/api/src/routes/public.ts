@@ -71,22 +71,56 @@ export async function publicRoutes(app: FastifyInstance) {
     const valid = await validateToken(token);
     if (!valid) return reply.unauthorized();
 
-    const entries = await prisma.rotaEntry.findMany({ include: { clinician: true, duty: true } });
+    // Parse optional clinician filter
+    const query = z
+      .object({
+        clinician: z.string().optional()
+      })
+      .parse(request.query);
+
+    // Build where clause for filtering
+    const where: { clinicianId?: number } = {};
+    if (query.clinician) {
+      const clinicianId = parseInt(query.clinician, 10);
+      if (!isNaN(clinicianId)) {
+        where.clinicianId = clinicianId;
+      }
+    }
+
+    const entries = await prisma.rotaEntry.findMany({
+      where,
+      include: { clinician: true, duty: true }
+    });
+
     const events = entries.map((e) => {
       const dateObj = new Date(e.date);
+      // Determine start time based on session
+      let startHour = 9;
+      if (e.session === 'PM') startHour = 13;
+      if (e.session === 'FULL') startHour = 8;
+
       const start: [number, number, number, number, number] = [
         dateObj.getFullYear(),
         dateObj.getMonth() + 1,
         dateObj.getDate(),
-        9,
+        startHour,
         0
       ];
-      const title = `${e.clinician.name} - ${e.isOncall ? 'On-call' : e.duty?.name || 'Duty'}`;
+
+      // Determine duration based on session
+      let durationHours = 4;
+      if (e.session === 'FULL' || e.isOncall) durationHours = 12;
+
+      // Build title - include clinician name only if showing all
+      const title = query.clinician
+        ? (e.isOncall ? 'On-call' : e.duty?.name || 'Duty')
+        : `${e.clinician.name} - ${e.isOncall ? 'On-call' : e.duty?.name || 'Duty'}`;
+
       return {
         title,
         start,
-        duration: { hours: 3 },
-        description: `Session: ${e.session}`
+        duration: { hours: durationHours },
+        description: query.clinician ? undefined : `${e.clinician.name} - ${e.session}`
       };
     });
 
