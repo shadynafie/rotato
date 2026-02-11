@@ -1,137 +1,132 @@
-# Rota Manager
+<img src="assets/icons/icon-60.png" alt="Rotato Logo" align="left" style="margin-right: 15px;">
 
-Web app for a single clinical team (consultants & registrars) to manage rota duties with admin-only editing and public read-only access.
+# Rotato
 
-## Capabilities
-- **Auth & Roles**: Single admin login (email/password). Public tokenized link for read-only web view and iCal feed.
-- **Clinicians & Duties**: CRUD for clinicians (consultant/registrar) and duty catalogue. Notification toggles stored per clinician.
-- **Job Plans**: Week 1–5 template per clinician with AM/PM duties; repeats monthly.
-- **On-call Cycles**: Rolling templates (e.g., 7-week consultants, daily registrars) with configurable cycle length and slots.
-- **Rota Generation**: Fills AM/PM sessions from job plans and on-call cycles; on-call spans full day. Admin can override any entry or mark leave (annual/study/sick/professional). Generation is idempotent and respects manual/leave overrides.
-- **Views**: Calendar page (day/week/month planned; basic list view wired) with role/clinician filters and range selection. UK date format (dd/mm/yyyy), 12-hour clock.
-- **Notifications**: Email + stubbed WhatsApp recorded in DB on rota changes; test endpoint available.
-- **Audit Trail**: All mutations to settings/rota logged with before/after snapshots.
-- **Public Sharing**: Create share tokens; read-only calendar JSON and iCal feed via token.
+**A simple rota management app for clinical teams**
 
-## Architecture & Tech Stack
-- **Backend**: Node.js + Fastify (TypeScript), Prisma ORM. SQLite-first (simplest local/dev); swap to Postgres later if needed. JWT auth. Routes under `packages/api/src/routes`.
-- **Frontend**: React + Vite + TypeScript, Mantine UI, React Query, Axios. Auth context with protected routes. Pages under `packages/web/src/pages`.
-- **Build/Tooling**: npm workspaces (root `package.json`), TypeScript base config, ESLint + Prettier, Vite dev server for web. Env via `.env` (see `packages/api/.env.example`).
-- **Docs**: High-level architecture in `docs/architecture.md`; API contract draft in `api/openapi.yaml`; SQL sketch in `db/schema.sql`.
+---
 
-## Repository Layout
-- `packages/api` — Fastify server, Prisma schema, routes, services, seed script.
-- `packages/web` — React app, layout, pages, API client.
-- `db/schema.sql` — SQL reference schema (mirrors Prisma).
-- `docs/architecture.md` — system design overview.
-- `api/openapi.yaml` — REST surface draft.
+## What is Rotato?
 
-## Important Backend Files
-- `packages/api/prisma/schema.prisma` — data model (clinicians, duties, jobPlanWeeks, oncallCycles, rotaEntries, leaves, notifications, auditLog, shareTokens).
-- `packages/api/src/services/rotaGenerator.ts` — applies job plans/on-call to date ranges, respecting overrides/leaves.
-- Routes:
-  - Auth: `routes/auth.ts`
-  - Clinicians: `routes/clinicians.ts`
-  - Duties: `routes/duties.ts`
-  - Job plans: `routes/jobPlans.ts`
-  - On-call cycles: `routes/oncall.ts`
-  - Rota list/generate/override: `routes/rota.ts`
-  - Leaves: `routes/leaves.ts`
-  - Notifications stub: `routes/notifications.ts`
-  - Share tokens & public endpoints (calendar + iCal): `routes/shareTokens.ts`, `routes/public.ts`
-  - Audit log: `routes/audit.ts`
+Rotato helps clinical teams manage their on-call rotas and duty schedules. It's designed to be simple enough that anyone can use it, while being powerful enough to handle complex rotating schedules.
 
-## Important Frontend Files
-- `src/main.tsx` — routing, providers (Mantine, React Query, Auth).
-- `src/layout/MainLayout.tsx` — nav/shell with logout.
-- `src/api/client.ts` — Axios instance with JWT header.
-- Pages: `LoginPage`, `CalendarPage`, `Settings/CliniciansPage`, `Settings/DutiesPage`, `Settings/JobPlansPage`, `Settings/OncallPage`, `Settings/ShareTokensPage`.
+### Key Features
 
-## Docker Deployment (Recommended)
+- **On-Call Schedules** — Set up rotating on-call patterns for consultants and registrars
+- **Job Plans** — Define weekly duty templates that repeat automatically
+- **Leave Management** — Track annual leave, study leave, and sick days
+- **Shareable Calendar** — Generate a link anyone can view (no login required)
+- **iCal Feed** — Sync with Google Calendar, Outlook, or your phone
 
-The easiest way to deploy Rota Manager is using Docker. A single container serves both the API and web frontend.
+---
 
-### Quick Start with Docker Compose
+## Getting Started
 
+### For Users
+
+Once Rotato is set up, simply open your web browser and go to the address provided by your IT team (e.g., `http://rota.yourhospital.com:3001`).
+
+**Default login:**
+- Email: `admin@example.com`
+- Password: `admin123`
+
+> ⚠️ **Important:** Change the default password after your first login!
+
+### For IT Teams
+
+Rotato runs as a single Docker container. See the [Deployment Guide](docs/DEPLOYMENT.md) for setup instructions.
+
+**Quick start:**
 ```bash
-# Clone the repository
-git clone https://github.com/shadynafie/rotato.git
-cd rotato
-
-# Create data directory for persistent database
-mkdir -p data
-
-# Set your JWT secret (required for production)
-export JWT_SECRET="your-secure-random-secret-here"
-
-# Start the container
-docker-compose up -d
-```
-
-The app will be available at `http://localhost:3001`
-
-**Default login:** `admin@example.com` / `admin123`
-
-### Docker Run (Alternative)
-
-```bash
-# Pull the image from GitHub Container Registry
 docker pull ghcr.io/shadynafie/rotato:latest
-
-# Run with persistent data
-docker run -d \
-  --name rota-manager \
-  -p 3001:3001 \
-  -v $(pwd)/data:/data \
-  -e JWT_SECRET="your-secure-random-secret-here" \
-  ghcr.io/shadynafie/rotato:latest
+docker run -d -p 3001:3001 -v ./data:/data -e JWT_SECRET="your-secret" ghcr.io/shadynafie/rotato:latest
 ```
 
-### Portainer Stack
+---
 
-```yaml
-version: '3.8'
+## How to Use Rotato
 
-services:
-  rota-manager:
-    image: ghcr.io/shadynafie/rotato:latest
-    container_name: rota-manager
-    ports:
-      - "3001:3001"
-    volumes:
-      - /path/to/your/data:/data
-    environment:
-      - JWT_SECRET=your-secure-random-secret-here
-      - CORS_ORIGIN=*
-    restart: unless-stopped
-```
+### Viewing the Rota
 
-### Environment Variables
+1. Open Rotato in your browser
+2. The **Calendar** page shows the current schedule
+3. Use the tabs to switch between **Day**, **Week**, and **Month** views
+4. Click on any day to see full details
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3001` | Port the server listens on |
-| `JWT_SECRET` | - | **Required.** Secret for JWT signing |
-| `DATABASE_URL` | `file:/data/rota.db` | SQLite database path |
-| `CORS_ORIGIN` | `*` | Allowed CORS origins |
+### Managing Clinicians
 
-### Data Persistence
+1. Go to **Settings** → **Clinicians**
+2. Click **Add Clinician** to add a new team member
+3. Set their role (Consultant or Registrar)
+4. Their name will now appear in the scheduling options
 
-The SQLite database is stored in `/data/rota.db` inside the container. Map this to a host directory to persist data across container restarts:
+### Setting Up On-Call Rotas
 
-```bash
--v /your/host/path:/data
-```
+1. Go to **Settings** → **On-Call Cycles**
+2. Create a cycle (e.g., "Consultant Weekend On-Call")
+3. Set the cycle length (e.g., 7 weeks for 7 consultants)
+4. Add each clinician to their slot in the rotation
+5. The system will automatically calculate who's on call for any date
 
-## Local Development Setup
+### Recording Leave
 
-1. Install deps: `npm install`
-2. Generate Prisma client: `npm run prisma:generate --workspace api`
-3. Apply schema & seed (creates admin `admin@example.com / admin123` and share token):
-   `npm run prisma:seed --workspace api`
-4. Run API: `npm run dev:api` (defaults to port 3001; configure via `.env`)
-5. Run web: `npm run dev` (Vite on 5173; expects `VITE_API_BASE_URL` pointing to API)
+1. Go to **Settings** → **Leave**
+2. Click **Add Leave**
+3. Select the clinician and date range
+4. Choose the type: Annual, Study, Sick, or Professional
+5. The calendar will show them as unavailable
 
-## Environment (Local Development)
-- `packages/api/.env.example` documents: `DATABASE_URL` (defaults to `file:./dev.db` for SQLite), `JWT_SECRET`, `PORT`, `CORS_ORIGIN`.
-- Default time/date: UK format, 12-hour clock; timezone default Europe/London (configure in code if needed).
+### Sharing the Rota
+
+1. Go to **Settings** → **Share Links**
+2. Click **Create New Link**
+3. Copy the link and share it with your team
+4. Anyone with the link can view the rota (no login needed)
+
+---
+
+## Frequently Asked Questions
+
+**Q: Can multiple people edit the rota at once?**
+A: Currently, Rotato has a single admin account. Multiple admin support is planned for a future release.
+
+**Q: What happens if someone is on leave during their on-call?**
+A: The leave will be shown on the calendar. You'll need to arrange cover manually and can add a manual override if needed.
+
+**Q: Can I export the rota to Excel?**
+A: Not yet, but you can use the iCal feed to sync with calendar apps, or use the public view link to share with colleagues.
+
+**Q: Is our data secure?**
+A: Rotato stores data locally on your server. No data is sent to external services. For best security, run it behind your hospital's firewall or VPN.
+
+---
+
+## Need Help?
+
+- **User questions:** Contact your local IT support
+- **Bug reports:** [Open an issue on GitHub](https://github.com/shadynafie/rotato/issues)
+- **Technical documentation:** See the [docs folder](docs/)
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Deployment Guide](docs/DEPLOYMENT.md) | How to install and run Rotato |
+| [Development Guide](docs/DEVELOPMENT.md) | For developers who want to contribute |
+| [Architecture](docs/architecture.md) | System design overview |
+
+---
+
+## License
+
+MIT License — free to use, modify, and distribute.
+
+---
+
+<p align="center">
+  <img src="assets/icons/icon-32.png" alt="Rotato">
+  <br>
+  Made with ❤️ for NHS clinical teams
+</p>
