@@ -458,7 +458,7 @@ export const PublicViewPage: React.FC = () => {
         {/* Header */}
         <Box mb={32}>
           <Group gap="xs" mb={8}>
-            <img src="/favicon.png" alt="Rotato" width={28} height={28} style={{ borderRadius: 6 }} />
+            <img src="/icon-192.png" alt="Rotato" width={28} height={28} style={{ borderRadius: 6 }} />
             <Text
               style={{
                 fontSize: '1.25rem',
