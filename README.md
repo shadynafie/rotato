@@ -34,13 +34,25 @@ Once Rotato is set up, simply open your web browser and go to the address provid
 
 ### For IT Teams
 
-Rotato runs as a single Docker container. See the [Deployment Guide](docs/DEPLOYMENT.md) for setup instructions.
+Rotato runs as a single Docker container. See the [Deployment Guide](docs/DEPLOYMENT.md) for full instructions.
 
-**Quick start:**
-```bash
-docker pull ghcr.io/shadynafie/rotato:latest
-docker run -d -p 3001:3001 -v ./data:/data -e JWT_SECRET="your-secret" ghcr.io/shadynafie/rotato:latest
+**Portainer Stack:**
+```yaml
+version: '3.8'
+services:
+  rotato:
+    image: ghcr.io/shadynafie/rotato:latest
+    container_name: rotato
+    ports:
+      - "3001:3001"
+    volumes:
+      - /opt/rotato/data:/data
+    environment:
+      - JWT_SECRET=change-this-to-a-random-string
+    restart: unless-stopped
 ```
+
+> Create the data folder first: `mkdir -p /opt/rotato/data`
 
 ---
 

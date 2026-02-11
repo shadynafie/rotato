@@ -51,27 +51,32 @@ If you're using Portainer, create a new stack with this configuration:
 version: '3.8'
 
 services:
-  rota-manager:
+  rotato:
     image: ghcr.io/shadynafie/rotato:latest
-    container_name: rota-manager
+    container_name: rotato
     ports:
       - "3001:3001"
     volumes:
-      - /path/to/your/data:/data
+      - /opt/rotato/data:/data
     environment:
-      - JWT_SECRET=your-secure-random-secret-here
-      - CORS_ORIGIN=*
+      - JWT_SECRET=change-this-to-a-random-string
     restart: unless-stopped
 ```
 
+> **Important:** Before deploying, create the data folder on your server:
+> ```bash
+> mkdir -p /opt/rotato/data
+> ```
+> Change `/opt/rotato/data` to wherever you want to store the database.
+
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3001` | Port the server listens on |
-| `JWT_SECRET` | - | **Required.** Secret key for authentication |
-| `DATABASE_URL` | `file:/data/rota.db` | SQLite database path |
-| `CORS_ORIGIN` | `*` | Allowed origins for web requests |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `JWT_SECRET` | **Yes** | A random string used to secure user sessions. Generate one with: `openssl rand -hex 32` |
+| `PORT` | No | Port the server listens on (default: `3001`) |
+
+That's it! Most users only need to set `JWT_SECRET`. The other variables have sensible defaults.
 
 ### Data Persistence
 

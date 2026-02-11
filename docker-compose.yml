@@ -1,21 +1,19 @@
 version: '3.8'
 
 services:
-  rota-manager:
+  rotato:
     image: ghcr.io/shadynafie/rotato:latest
-    container_name: rota-manager
+    container_name: rotato
     ports:
       - "3001:3001"
     volumes:
-      # Map data folder for persistent SQLite database
-      - ./data:/data
+      # Map to external folder for persistent database
+      # Change this path to your preferred location
+      - /opt/rotato/data:/data
     environment:
-      - NODE_ENV=production
-      - PORT=3001
-      - DATABASE_URL=file:/data/rota.db
-      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
-      - CORS_ORIGIN=*
-      - SERVE_STATIC=true
+      # Required: change this to a random string
+      # Generate one with: openssl rand -hex 32
+      - JWT_SECRET=${JWT_SECRET:-change-this-to-a-random-string}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
