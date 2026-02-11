@@ -1,5 +1,5 @@
-import { ActionIcon, Badge, Box, Button, CopyButton, Group, Loader, Table, Text, Tooltip } from '@mantine/core';
-import React from 'react';
+import { ActionIcon, Badge, Box, Button, Group, Loader, Table, Text, Tooltip } from '@mantine/core';
+import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 
@@ -18,6 +18,73 @@ function formatDate(dateStr: string) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+// Copy to clipboard with fallback for non-HTTPS contexts
+async function copyToClipboard(text: string): Promise<boolean> {
+  // Try modern clipboard API first
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to fallback
+    }
+  }
+
+  // Fallback for HTTP contexts
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.style.position = 'fixed';
+  textArea.style.left = '-999999px';
+  textArea.style.top = '-999999px';
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+
+  try {
+    document.execCommand('copy');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    textArea.remove();
+  }
+}
+
+// Custom copy button with fallback support
+function CopyLinkButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const success = await copyToClipboard(url);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <Tooltip label={copied ? 'Copied!' : 'Copy link'} withArrow>
+      <ActionIcon
+        variant="light"
+        color={copied ? 'green' : 'blue'}
+        onClick={handleCopy}
+        radius="md"
+      >
+        {copied ? (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+        )}
+      </ActionIcon>
+    </Tooltip>
+  );
 }
 
 export const ShareTokensPage: React.FC = () => {
@@ -127,31 +194,7 @@ export const ShareTokensPage: React.FC = () => {
                       <Text c="#1d1d1f" size="sm">{formatDate(t.createdAt)}</Text>
                     </Table.Td>
                     <Table.Td>
-                      <Group gap="xs">
-                        <CopyButton value={shareUrl}>
-                          {({ copied, copy }) => (
-                            <Tooltip label={copied ? 'Copied!' : 'Copy link'} withArrow>
-                              <ActionIcon
-                                variant="light"
-                                color={copied ? 'green' : 'blue'}
-                                onClick={copy}
-                                radius="md"
-                              >
-                                {copied ? (
-                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="20 6 9 17 4 12"/>
-                                  </svg>
-                                ) : (
-                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                                  </svg>
-                                )}
-                              </ActionIcon>
-                            </Tooltip>
-                          )}
-                        </CopyButton>
-                      </Group>
+                      <CopyLinkButton url={shareUrl} />
                     </Table.Td>
                   </Table.Tr>
                 );
