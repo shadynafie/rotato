@@ -149,16 +149,19 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
     <>
       {/* Logo */}
       <Box px="md" py="lg">
-        <Text
-          style={{
-            fontSize: '1.25rem',
-            fontWeight: 600,
-            color: '#1d1d1f',
-            letterSpacing: '-0.02em'
-          }}
-        >
-          Rota Manager
-        </Text>
+        <Group gap="xs">
+          <img src="/favicon.png" alt="Rotato" width={28} height={28} style={{ borderRadius: 6 }} />
+          <Text
+            style={{
+              fontSize: '1.25rem',
+              fontWeight: 600,
+              color: '#1d1d1f',
+              letterSpacing: '-0.02em'
+            }}
+          >
+            Rotato
+          </Text>
+        </Group>
       </Box>
 
       {/* Main nav */}
@@ -266,7 +269,10 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
       >
         <Group justify="space-between" w="100%">
           <Burger opened={mobileOpen} onClick={() => setMobileOpen(!mobileOpen)} size="sm" />
-          <Text fw={600} style={{ letterSpacing: '-0.02em' }}>Rota Manager</Text>
+          <Group gap={6}>
+            <img src="/favicon.png" alt="Rotato" width={24} height={24} style={{ borderRadius: 4 }} />
+            <Text fw={600} style={{ letterSpacing: '-0.02em' }}>Rotato</Text>
+          </Group>
           <Box w={28} /> {/* Spacer for centering */}
         </Group>
       </Box>

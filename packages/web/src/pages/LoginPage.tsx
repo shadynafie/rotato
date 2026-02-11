@@ -45,25 +45,17 @@ export const LoginPage: React.FC = () => {
       >
         {/* Logo/Brand */}
         <Box ta="center" mb={40}>
-          <Box
+          <img
+            src="/icon-192.png"
+            alt="Rotato"
+            width={72}
+            height={72}
             style={{
-              width: 64,
-              height: 64,
-              backgroundColor: '#1d1d1f',
               borderRadius: 16,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               margin: '0 auto 20px',
+              display: 'block',
             }}
-          >
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-              <line x1="16" y1="2" x2="16" y2="6"/>
-              <line x1="8" y1="2" x2="8" y2="6"/>
-              <line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-          </Box>
+          />
           <Text
             style={{
               fontSize: '1.75rem',
@@ -73,7 +65,7 @@ export const LoginPage: React.FC = () => {
               marginBottom: 8,
             }}
           >
-            Rota Manager
+            Rotato
           </Text>
           <Text
             style={{

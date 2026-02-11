@@ -457,17 +457,19 @@ export const PublicViewPage: React.FC = () => {
       <Box p={{ base: 'md', sm: 'xl' }} maw={1200} mx="auto">
         {/* Header */}
         <Box mb={32}>
-          <Text
-            style={{
-              fontSize: '1.25rem',
-              fontWeight: 600,
-              color: '#0071e3',
-              letterSpacing: '-0.02em',
-              marginBottom: 8,
-            }}
-          >
-            Rota Manager
-          </Text>
+          <Group gap="xs" mb={8}>
+            <img src="/favicon.png" alt="Rotato" width={28} height={28} style={{ borderRadius: 6 }} />
+            <Text
+              style={{
+                fontSize: '1.25rem',
+                fontWeight: 600,
+                color: '#0071e3',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              Rotato
+            </Text>
+          </Group>
           <Text
             style={{
               fontSize: '2rem',
@@ -482,7 +484,7 @@ export const PublicViewPage: React.FC = () => {
             {view === 'month' && formatMonthYear(selectedDate)}
           </Text>
           <Text style={{ fontSize: '1.0625rem', color: '#86868b' }}>
-            Rota schedule (read-only view)
+            Team schedule (read-only view)
           </Text>
         </Box>
 
