@@ -5,19 +5,15 @@ services:
     image: ghcr.io/shadynafie/rotato:latest
     container_name: rotato
     ports:
+      # Users access via http://your-server:3001
+      # Change to "80:3001" if you want http://your-server (no port)
       - "3001:3001"
     volumes:
-      # Map to external folder for persistent database
-      # Change this path to your preferred location
+      # Database storage - change path to your preferred location
+      # Make sure this folder exists: mkdir -p /opt/rotato/data
       - /opt/rotato/data:/data
     environment:
-      # Required: change this to a random string
+      # REQUIRED: Change this to a random string for security
       # Generate one with: openssl rand -hex 32
-      - JWT_SECRET=${JWT_SECRET:-change-this-to-a-random-string}
+      - JWT_SECRET=CHANGE-THIS-TO-SOMETHING-RANDOM
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 10s

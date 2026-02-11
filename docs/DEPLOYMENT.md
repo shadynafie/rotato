@@ -1,51 +1,32 @@
 # Deployment Guide
 
-This guide covers the technical details for deploying Rotato.
+This guide explains how to deploy Rotato on your server.
 
-## Docker Deployment
+## What You Need
 
-Rotato runs as a single Docker container that includes both the web interface and API server.
+- A server with Docker installed (or Portainer)
+- 5 minutes of your time
 
-### Prerequisites
+## Deploying with Portainer (Recommended)
 
-- Docker installed on your server
-- A directory for persistent data storage
+Portainer is the easiest way to deploy Rotato. Follow these steps:
 
-### Quick Start with Docker Compose
+### Step 1: Create the Data Folder
 
-```bash
-# Clone the repository
-git clone https://github.com/shadynafie/rotato.git
-cd rotato
-
-# Create data directory for persistent database
-mkdir -p data
-
-# Set your JWT secret (required for production)
-export JWT_SECRET="your-secure-random-secret-here"
-
-# Start the container
-docker-compose up -d
-```
-
-### Docker Run (Alternative)
+First, SSH into your server and create a folder to store the database:
 
 ```bash
-# Pull the image from GitHub Container Registry
-docker pull ghcr.io/shadynafie/rotato:latest
-
-# Run with persistent data
-docker run -d \
-  --name rota-manager \
-  -p 3001:3001 \
-  -v $(pwd)/data:/data \
-  -e JWT_SECRET="your-secure-random-secret-here" \
-  ghcr.io/shadynafie/rotato:latest
+mkdir -p /opt/rotato/data
 ```
 
-### Portainer Stack
+This folder will store all your rota data. Choose a location that gets backed up!
 
-If you're using Portainer, create a new stack with this configuration:
+### Step 2: Create the Stack in Portainer
+
+1. Open Portainer and go to **Stacks**
+2. Click **Add Stack**
+3. Give it a name: `rotato`
+4. Paste this configuration:
 
 ```yaml
 version: '3.8'
@@ -59,54 +40,115 @@ services:
     volumes:
       - /opt/rotato/data:/data
     environment:
-      - JWT_SECRET=change-this-to-a-random-string
+      - JWT_SECRET=CHANGE-THIS-TO-SOMETHING-RANDOM
     restart: unless-stopped
 ```
 
-> **Important:** Before deploying, create the data folder on your server:
-> ```bash
-> mkdir -p /opt/rotato/data
-> ```
-> Change `/opt/rotato/data` to wherever you want to store the database.
+5. **Important:** Change `CHANGE-THIS-TO-SOMETHING-RANDOM` to an actual random string
+6. Click **Deploy the stack**
 
-### Environment Variables
+### Step 3: Access Rotato
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `JWT_SECRET` | **Yes** | A random string used to secure user sessions. Generate one with: `openssl rand -hex 32` |
-| `PORT` | No | Port the server listens on (default: `3001`) |
+Open your browser and go to:
 
-That's it! Most users only need to set `JWT_SECRET`. The other variables have sensible defaults.
-
-### Data Persistence
-
-The SQLite database is stored at `/data/rota.db` inside the container. **Important:** Always map this to a host directory to keep your data safe:
-
-```bash
--v /your/host/path:/data
+```
+http://YOUR-SERVER-IP:3001
 ```
 
-### Health Check
+**Default login:**
+- Email: `admin@example.com`
+- Password: `admin123`
 
-The container includes a health check endpoint at `/health`. You can verify the service is running:
+That's it! You're done.
 
-```bash
-curl http://localhost:3001/health
+---
+
+## Understanding the Configuration
+
+### The Port (3001)
+
+```yaml
+ports:
+  - "3001:3001"
 ```
 
-### Updating
+This is the web address port. Users will access Rotato at `http://your-server:3001`
 
-To update to the latest version:
+Want to use a different port? Change the first number:
+- `"80:3001"` → Users go to `http://your-server` (no port needed)
+- `"8080:3001"` → Users go to `http://your-server:8080`
 
+### The Data Folder
+
+```yaml
+volumes:
+  - /opt/rotato/data:/data
+```
+
+This saves your database outside the container. If you update or restart Rotato, your data is safe.
+
+Change `/opt/rotato/data` to wherever you want to store the data on your server.
+
+### The JWT Secret
+
+```yaml
+environment:
+  - JWT_SECRET=CHANGE-THIS-TO-SOMETHING-RANDOM
+```
+
+This secures user logins. Use any random string - the longer the better.
+
+Generate a random one with:
+```bash
+openssl rand -hex 32
+```
+
+---
+
+## Alternative: Docker Command Line
+
+If you prefer the command line over Portainer:
+
+```bash
+# Create data folder
+mkdir -p /opt/rotato/data
+
+# Run Rotato
+docker run -d \
+  --name rotato \
+  -p 3001:3001 \
+  -v /opt/rotato/data:/data \
+  -e JWT_SECRET="your-random-secret-here" \
+  --restart unless-stopped \
+  ghcr.io/shadynafie/rotato:latest
+```
+
+---
+
+## Updating Rotato
+
+To get the latest version:
+
+**In Portainer:**
+1. Go to your `rotato` stack
+2. Click **Editor**
+3. Click **Update the stack**
+4. Check "Re-pull image"
+5. Click **Update**
+
+**Command line:**
 ```bash
 docker pull ghcr.io/shadynafie/rotato:latest
-docker-compose down
-docker-compose up -d
+docker restart rotato
 ```
 
-## Reverse Proxy (Optional)
+---
 
-If you want to run Rotato behind a reverse proxy like Nginx:
+## Using a Custom Domain (Optional)
+
+If you want users to access Rotato at `https://rota.yourhospital.com` instead of an IP address, you'll need a reverse proxy like Nginx or Traefik. This is usually set up by your IT team.
+
+Example Nginx configuration:
 
 ```nginx
 server {
@@ -115,26 +157,37 @@ server {
 
     location / {
         proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
     }
 }
 ```
 
+---
+
 ## Troubleshooting
 
-### Container won't start
-- Check logs: `docker logs rota-manager`
-- Verify JWT_SECRET is set
-- Ensure the data directory has correct permissions
+### Can't access the web page
 
-### Can't access the web interface
-- Verify port 3001 is not blocked by firewall
-- Check if the container is running: `docker ps`
+1. Check if Rotato is running:
+   - In Portainer: Look for green "running" status
+   - Command line: `docker ps | grep rotato`
 
-### Data not persisting
-- Ensure volume is correctly mounted
-- Check the data directory exists and is writable
+2. Check the logs:
+   - In Portainer: Click on the container → Logs
+   - Command line: `docker logs rotato`
+
+3. Check your firewall allows port 3001
+
+### Lost your password
+
+Currently, you'll need to reset the database or contact the developer for help. A password reset feature is planned.
+
+### Data disappeared after update
+
+Make sure your volume is correctly mapped. The data folder should contain a file called `rota.db`:
+
+```bash
+ls -la /opt/rotato/data/
+# Should show: rota.db
+```
