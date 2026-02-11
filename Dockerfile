@@ -1,51 +1,42 @@
 # Multi-stage build for Rota Manager
 # Single container serving both API and web frontend
 
-# Stage 1: Build web frontend
-FROM node:20-alpine AS web-builder
+# Stage 1: Build everything
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy package files
+# Copy all package files for workspace resolution
 COPY package*.json ./
+COPY packages/api/package*.json ./packages/api/
 COPY packages/web/package*.json ./packages/web/
 
-# Install dependencies
-RUN npm ci --workspace web
+# Install all dependencies
+RUN npm ci
 
-# Copy web source and build
+# Copy source files
+COPY packages/api ./packages/api
 COPY packages/web ./packages/web
+COPY tsconfig.base.json ./
 
-# Set API base URL to empty for same-origin requests in production
+# Generate Prisma client
+RUN npm run prisma:generate --workspace api
+
+# Build API
+RUN npm run build --workspace api
+
+# Build web (set API base URL to empty for same-origin requests)
 ENV VITE_API_BASE_URL=""
 RUN npm run build --workspace web
 
-# Stage 2: Build API
-FROM node:20-alpine AS api-builder
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-COPY packages/api/package*.json ./packages/api/
-
-# Install dependencies (including dev for build)
-RUN npm ci --workspace api
-
-# Copy API source
-COPY packages/api ./packages/api
-
-# Generate Prisma client and build
-RUN npm run prisma:generate --workspace api
-RUN npm run build --workspace api
-
-# Stage 3: Production runtime
+# Stage 2: Production runtime
 FROM node:20-alpine AS runtime
 WORKDIR /app
 
-# Install production dependencies only
+# Copy all package files
 COPY package*.json ./
 COPY packages/api/package*.json ./packages/api/
 
-# Install dependencies (need tsx for seeding)
+# Install production dependencies (need tsx for seeding)
 RUN npm ci --workspace api
 
 # Copy Prisma schema and migrations
@@ -53,10 +44,10 @@ COPY packages/api/prisma ./packages/api/prisma
 RUN npx prisma generate --schema=packages/api/prisma/schema.prisma
 
 # Copy built API
-COPY --from=api-builder /app/packages/api/dist ./packages/api/dist
+COPY --from=builder /app/packages/api/dist ./packages/api/dist
 
 # Copy built web assets
-COPY --from=web-builder /app/packages/web/dist ./packages/web/dist
+COPY --from=builder /app/packages/web/dist ./packages/web/dist
 
 # Copy and setup entrypoint script
 COPY docker-entrypoint.sh /docker-entrypoint.sh
