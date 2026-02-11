@@ -3,9 +3,9 @@ set -e
 
 cd /app/packages/api
 
-# Run Prisma migrations to create/update database schema
-echo "Running database migrations..."
-npx prisma migrate deploy --schema=prisma/schema.prisma
+# Create/update database schema
+echo "Setting up database schema..."
+npx prisma db push --schema=prisma/schema.prisma --accept-data-loss
 
 # Check if database needs seeding (if no users exist)
 echo "Checking if database needs seeding..."
