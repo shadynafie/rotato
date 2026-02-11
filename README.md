@@ -38,9 +38,6 @@ Rotato runs as a single Docker container. See the [Deployment Guide](docs/DEPLOY
 
 **Quick Setup with Portainer:**
 
-1. Create data folder: `mkdir -p /opt/rotato/data`
-2. Add this stack in Portainer:
-
 ```yaml
 version: '3.8'
 services:
@@ -48,15 +45,20 @@ services:
     image: ghcr.io/shadynafie/rotato:latest
     container_name: rotato
     ports:
-      - "3001:3001"   # Users access via http://your-server:3001
+      - "3001:3001"
     volumes:
-      - /opt/rotato/data:/data   # Database storage
+      - rotato_data:/data
     environment:
       - JWT_SECRET=CHANGE-THIS-TO-SOMETHING-RANDOM
     restart: unless-stopped
+
+volumes:
+  rotato_data:
 ```
 
-3. Users access: `http://YOUR-SERVER-IP:3001`
+Then access: `http://YOUR-SERVER-IP:3001`
+
+> See the [Deployment Guide](docs/DEPLOYMENT.md) for alternative storage options (host folder vs Docker volume).
 
 ---
 

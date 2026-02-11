@@ -6,14 +6,18 @@ services:
     container_name: rotato
     ports:
       # Users access via http://your-server:3001
-      # Change to "80:3001" if you want http://your-server (no port)
+      # Change to "80:3001" for http://your-server (no port)
       - "3001:3001"
     volumes:
-      # Database storage - change path to your preferred location
-      # Make sure this folder exists: mkdir -p /opt/rotato/data
-      - /opt/rotato/data:/data
+      # Option A: Docker Volume (recommended - simpler)
+      - rotato_data:/data
+      # Option B: Host Folder (uncomment below, comment above)
+      # - /opt/rotato/data:/data
     environment:
-      # REQUIRED: Change this to a random string for security
+      # REQUIRED: Change this to a random string
       # Generate one with: openssl rand -hex 32
       - JWT_SECRET=CHANGE-THIS-TO-SOMETHING-RANDOM
     restart: unless-stopped
+
+volumes:
+  rotato_data:
