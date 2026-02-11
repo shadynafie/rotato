@@ -149,13 +149,13 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
     <>
       {/* Logo */}
       <Box px="md" py="lg">
-        <Group gap="xs">
-          <img src="/favicon.png" alt="Rotato" width={28} height={28} style={{ borderRadius: 6 }} />
+        <Group gap="sm">
+          <img src="/favicon.png" alt="Rotato" width={36} height={36} style={{ borderRadius: 8 }} />
           <Text
             style={{
-              fontSize: '1.25rem',
-              fontWeight: 600,
-              color: '#1d1d1f',
+              fontSize: '1.35rem',
+              fontWeight: 700,
+              color: '#0051a8',
               letterSpacing: '-0.02em'
             }}
           >
@@ -269,9 +269,9 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
       >
         <Group justify="space-between" w="100%">
           <Burger opened={mobileOpen} onClick={() => setMobileOpen(!mobileOpen)} size="sm" />
-          <Group gap={6}>
-            <img src="/favicon.png" alt="Rotato" width={24} height={24} style={{ borderRadius: 4 }} />
-            <Text fw={600} style={{ letterSpacing: '-0.02em' }}>Rotato</Text>
+          <Group gap={8}>
+            <img src="/favicon.png" alt="Rotato" width={28} height={28} style={{ borderRadius: 6 }} />
+            <Text fw={700} style={{ letterSpacing: '-0.02em', color: '#0051a8' }}>Rotato</Text>
           </Group>
           <Box w={28} /> {/* Spacer for centering */}
         </Group>
