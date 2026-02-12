@@ -136,9 +136,11 @@ export const UsersPage: React.FC = () => {
   };
 
   const isLoading = createMutation.isPending || updateMutation.isPending;
+  const emailFilled = form.email && form.email.trim().length > 0;
+  const passwordFilled = form.password && form.password.trim().length > 0;
   const canSave = editingId
-    ? (form.email?.trim() || form.password?.trim()) // For edit, at least one field should be filled
-    : (form.email?.trim() && form.password?.trim()); // For create, both are required
+    ? (emailFilled || passwordFilled) // For edit, at least one field should be filled
+    : (emailFilled && passwordFilled); // For create, both are required
 
   return (
     <Box>
@@ -315,8 +317,8 @@ export const UsersPage: React.FC = () => {
             <TextInput
               label="Email"
               placeholder="admin@example.com"
-              value={form.email}
-              onChange={(e) => setForm((f) => ({ ...f, email: e.currentTarget.value }))}
+              value={form.email || ''}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
               required={!editingId}
               styles={{
                 label: { marginBottom: 8, fontWeight: 500 },
@@ -327,8 +329,8 @@ export const UsersPage: React.FC = () => {
             <PasswordInput
               label={editingId ? 'New Password' : 'Password'}
               placeholder={editingId ? 'Leave blank to keep current' : 'Enter password'}
-              value={form.password}
-              onChange={(e) => setForm((f) => ({ ...f, password: e.currentTarget.value }))}
+              value={form.password || ''}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
               required={!editingId}
               description={editingId ? 'Leave blank to keep the current password' : 'Minimum 6 characters'}
               styles={{
