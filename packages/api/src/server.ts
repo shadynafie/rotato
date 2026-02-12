@@ -19,6 +19,7 @@ import { shareTokenRoutes } from './routes/shareTokens.js';
 import { notificationRoutes } from './routes/notifications.js';
 import { auditRoutes } from './routes/audit.js';
 import { scheduleRoutes } from './routes/schedule.js';
+import { userRoutes } from './routes/users.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,6 +52,7 @@ await app.register(shareTokenRoutes);
 await app.register(notificationRoutes);
 await app.register(auditRoutes);
 await app.register(scheduleRoutes);
+await app.register(userRoutes);
 
 app.get('/health', async () => ({ status: 'ok' }));
 

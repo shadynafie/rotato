@@ -15,6 +15,7 @@ import { JobPlansPage } from './pages/Settings/JobPlansPage';
 import { LeavesPage } from './pages/Settings/LeavesPage';
 import { OncallPage } from './pages/Settings/OncallPage';
 import { ShareTokensPage } from './pages/Settings/ShareTokensPage';
+import { UsersPage } from './pages/Settings/UsersPage';
 import { PublicViewPage } from './pages/PublicViewPage';
 import { MainLayout } from './layout/MainLayout';
 
@@ -154,6 +155,7 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
                 <Route path="/settings/oncall" element={<ProtectedPage><OncallPage /></ProtectedPage>} />
                 <Route path="/settings/leaves" element={<ProtectedPage><LeavesPage /></ProtectedPage>} />
                 <Route path="/settings/share-tokens" element={<ProtectedPage><ShareTokensPage /></ProtectedPage>} />
+                <Route path="/settings/users" element={<ProtectedPage><UsersPage /></ProtectedPage>} />
 
                 {/* Catch-all redirect */}
                 <Route path="*" element={<ProtectedPage><CalendarPage /></ProtectedPage>} />
