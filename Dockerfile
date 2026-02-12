@@ -35,8 +35,8 @@ RUN npm run build --workspace web
 FROM node:20-alpine AS runtime
 WORKDIR /app
 
-# Install OpenSSL for Prisma runtime
-RUN apk add --no-cache openssl
+# Install OpenSSL for Prisma runtime and wget for health checks
+RUN apk add --no-cache openssl wget
 
 # Copy all package files
 COPY package*.json ./
