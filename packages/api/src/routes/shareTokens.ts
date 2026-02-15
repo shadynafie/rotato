@@ -5,7 +5,10 @@ import { logAudit } from '../utils/audit.js';
 import crypto from 'node:crypto';
 
 export async function shareTokenRoutes(app: FastifyInstance) {
-  app.get('/api/share-tokens', { preHandler: requireAuth }, async () => {
+  app.get('/api/share-tokens', { preHandler: requireAuth }, async (_request, reply) => {
+    // Prevent Cloudflare/browser caching
+    reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    reply.header('Pragma', 'no-cache');
     return prisma.shareToken.findMany({ orderBy: { createdAt: 'desc' } });
   });
 
