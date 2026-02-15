@@ -102,48 +102,14 @@ export async function publicRoutes(app: FastifyInstance) {
       ? schedule.filter(e => e.clinicianId === clinicianId)
       : schedule;
 
-    // Group entries by clinician+date to handle AM/PM sessions properly
-    // For on-call, combine AM+PM into single all-day event
-    const eventMap = new Map<string, {
-      clinicianName: string;
-      date: string;
-      isOncall: boolean;
-      isLeave: boolean;
-      leaveType: string | null;
-      dutyName: string | null;
-      supportingClinicianName: string | null;
-      sessions: string[];
-    }>();
+    const events: ics.EventAttributes[] = [];
 
     for (const entry of filteredSchedule) {
       // Skip empty entries (no duty, not on-call, not on leave)
       if (!entry.dutyName && !entry.isOncall && !entry.isLeave) continue;
 
-      const key = `${entry.clinicianId}-${entry.date}-${entry.isOncall}-${entry.isLeave}-${entry.dutyName || 'none'}-${entry.supportingClinicianName || 'none'}`;
-
-      if (eventMap.has(key)) {
-        eventMap.get(key)!.sessions.push(entry.session);
-      } else {
-        eventMap.set(key, {
-          clinicianName: entry.clinicianName,
-          date: entry.date,
-          isOncall: entry.isOncall,
-          isLeave: entry.isLeave,
-          leaveType: entry.leaveType,
-          dutyName: entry.dutyName,
-          supportingClinicianName: entry.supportingClinicianName,
-          sessions: [entry.session]
-        });
-      }
-    }
-
-    const events: ics.EventAttributes[] = [];
-
-    for (const entry of eventMap.values()) {
       const [year, month, day] = entry.date.split('-').map(Number);
-      const hasAM = entry.sessions.includes('AM');
-      const hasPM = entry.sessions.includes('PM');
-      const isFullDay = hasAM && hasPM;
+      const isAM = entry.session === 'AM';
 
       // Determine title
       let title: string;
@@ -167,26 +133,21 @@ export async function publicRoutes(app: FastifyInstance) {
       }
 
       if (entry.isOncall || entry.isLeave) {
-        // On-call and leave: create all-day event
-        events.push({
-          title,
-          start: [year, month, day],
-          end: [year, month, day + 1],
-          description: clinicianId ? undefined : entry.clinicianName
-        });
-      } else if (isFullDay) {
-        // Full day duty: 9:00-17:00
-        events.push({
-          title,
-          start: [year, month, day, 9, 0],
-          duration: { hours: 8 },
-          description: clinicianId ? undefined : entry.clinicianName
-        });
+        // On-call and leave: create all-day event (but only once per day)
+        // Skip PM to avoid duplicate all-day events
+        if (isAM) {
+          events.push({
+            title,
+            start: [year, month, day],
+            end: [year, month, day + 1],
+            description: clinicianId ? undefined : entry.clinicianName
+          });
+        }
       } else {
-        // Half day
-        const startHour = hasAM ? 9 : 13;
+        // Always create separate AM and PM events
+        const startHour = isAM ? 9 : 13;
         events.push({
-          title: clinicianId ? title : `${title} (${hasAM ? 'AM' : 'PM'})`,
+          title: `${title} (${isAM ? 'AM' : 'PM'})`,
           start: [year, month, day, startHour, 0],
           duration: { hours: 4 },
           description: clinicianId ? undefined : entry.clinicianName
