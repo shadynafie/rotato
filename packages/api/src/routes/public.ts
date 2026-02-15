@@ -153,7 +153,10 @@ export async function publicRoutes(app: FastifyInstance) {
       app.log.error(error);
       return reply.internalServerError();
     }
-    reply.header('Content-Type', 'text/calendar');
+    reply.header('Content-Type', 'text/calendar; charset=utf-8');
+    reply.header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+    reply.header('Pragma', 'no-cache');
+    reply.header('Expires', '0');
     reply.send(value);
   });
 }
