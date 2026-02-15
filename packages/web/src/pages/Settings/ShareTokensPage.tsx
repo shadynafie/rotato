@@ -101,6 +101,7 @@ export const ShareTokensPage: React.FC = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['shareTokens'] })
   });
 
+  // Get the most recent active token (sorted by createdAt desc from API)
   const activeToken = tokensQuery.data?.find(t => t.active);
   const baseUrl = window.location.origin;
 
