@@ -6,8 +6,9 @@ import ics from 'ics';
 import { formatLeaveLabel, formatDutyDisplay } from '../utils/formatters.js';
 
 async function validateToken(token: string) {
-  const record = await prisma.shareToken.findUnique({ where: { token, active: true } });
-  if (!record) return null;
+  // Find token by unique field, then verify it's active
+  const record = await prisma.shareToken.findUnique({ where: { token } });
+  if (!record || !record.active) return null;
   await prisma.shareToken.update({ where: { id: record.id }, data: { lastUsedAt: new Date() } });
   return record;
 }

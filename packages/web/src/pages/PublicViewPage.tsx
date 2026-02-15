@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { formatLeaveLabel, formatDateLong } from '../utils/formatters';
+import { formatLeaveLabel, formatDateLong, getSurname } from '../utils/formatters';
 import { COLORS } from '../utils/constants';
 
 interface ScheduleEntry {
