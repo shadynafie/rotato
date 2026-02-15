@@ -58,18 +58,21 @@ export const JobPlansPage: React.FC = () => {
     return map;
   }, [data?.jobPlans]);
 
-  // Get consultant options for a specific slot (only those with duties on that day/session)
-  const getConsultantOptionsForSlot = (weekNo: number, dayOfWeek: number, session: 'AM' | 'PM') => {
+  // Get consultant options for a specific slot (only those with the SAME duty as the registrar)
+  const getConsultantOptionsForSlot = (weekNo: number, dayOfWeek: number, session: 'AM' | 'PM', registrarDutyId: number | null | undefined) => {
+    if (!registrarDutyId) return [];
+
     const consultants = (data?.clinicians || []).filter((c) => c.role === 'consultant');
     const options: { value: string; label: string }[] = [];
 
     for (const consultant of consultants) {
       const key = `${consultant.id}-${weekNo}-${dayOfWeek}`;
       const plan = dirty[key] || planByKey.get(key);
-      const dutyId = session === 'AM' ? plan?.amDutyId : plan?.pmDutyId;
+      const consultantDutyId = session === 'AM' ? plan?.amDutyId : plan?.pmDutyId;
 
-      if (dutyId) {
-        const dutyName = dutyById.get(dutyId) || 'Duty';
+      // Only show consultants with the same duty as the registrar
+      if (consultantDutyId === registrarDutyId) {
+        const dutyName = dutyById.get(consultantDutyId) || 'Duty';
         options.push({
           value: consultant.id.toString(),
           label: `${consultant.name} - ${dutyName}`
@@ -261,7 +264,7 @@ export const JobPlansPage: React.FC = () => {
                                     {c.role === 'registrar' && plan?.amDutyId && (
                                       <Select
                                         placeholder="Supporting..."
-                                        data={getConsultantOptionsForSlot(weekNo, day.value, 'AM')}
+                                        data={getConsultantOptionsForSlot(weekNo, day.value, 'AM', plan?.amDutyId)}
                                         value={plan?.amSupportingClinicianId?.toString() ?? null}
                                         onChange={(v) => setCell(c.id, weekNo, day.value, 'amSupportingClinicianId', v ? Number(v) : null)}
                                         clearable
@@ -289,7 +292,7 @@ export const JobPlansPage: React.FC = () => {
                                     {c.role === 'registrar' && plan?.pmDutyId && (
                                       <Select
                                         placeholder="Supporting..."
-                                        data={getConsultantOptionsForSlot(weekNo, day.value, 'PM')}
+                                        data={getConsultantOptionsForSlot(weekNo, day.value, 'PM', plan?.pmDutyId)}
                                         value={plan?.pmSupportingClinicianId?.toString() ?? null}
                                         onChange={(v) => setCell(c.id, weekNo, day.value, 'pmSupportingClinicianId', v ? Number(v) : null)}
                                         clearable
