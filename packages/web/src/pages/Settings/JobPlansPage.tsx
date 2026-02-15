@@ -45,18 +45,40 @@ export const JobPlansPage: React.FC = () => {
     [data?.duties]
   );
 
-  const consultantOptions = useMemo(
-    () => (data?.clinicians || [])
-      .filter((c) => c.role === 'consultant')
-      .map((c) => ({ value: c.id.toString(), label: c.name })),
-    [data?.clinicians]
-  );
+  // Build duty lookup for names
+  const dutyById = useMemo(() => {
+    const map = new Map<number, string>();
+    (data?.duties || []).forEach((d) => map.set(d.id, d.name));
+    return map;
+  }, [data?.duties]);
 
   const planByKey = useMemo(() => {
     const map = new Map<string, JobPlanWeek>();
     data?.jobPlans.forEach((p) => map.set(`${p.clinicianId}-${p.weekNo}-${p.dayOfWeek}`, p));
     return map;
   }, [data?.jobPlans]);
+
+  // Get consultant options for a specific slot (only those with duties on that day/session)
+  const getConsultantOptionsForSlot = (weekNo: number, dayOfWeek: number, session: 'AM' | 'PM') => {
+    const consultants = (data?.clinicians || []).filter((c) => c.role === 'consultant');
+    const options: { value: string; label: string }[] = [];
+
+    for (const consultant of consultants) {
+      const key = `${consultant.id}-${weekNo}-${dayOfWeek}`;
+      const plan = dirty[key] || planByKey.get(key);
+      const dutyId = session === 'AM' ? plan?.amDutyId : plan?.pmDutyId;
+
+      if (dutyId) {
+        const dutyName = dutyById.get(dutyId) || 'Duty';
+        options.push({
+          value: consultant.id.toString(),
+          label: `${consultant.name} - ${dutyName}`
+        });
+      }
+    }
+
+    return options;
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -239,7 +261,7 @@ export const JobPlansPage: React.FC = () => {
                                     {c.role === 'registrar' && plan?.amDutyId && (
                                       <Select
                                         placeholder="Supporting..."
-                                        data={consultantOptions}
+                                        data={getConsultantOptionsForSlot(weekNo, day.value, 'AM')}
                                         value={plan?.amSupportingClinicianId?.toString() ?? null}
                                         onChange={(v) => setCell(c.id, weekNo, day.value, 'amSupportingClinicianId', v ? Number(v) : null)}
                                         clearable
@@ -267,7 +289,7 @@ export const JobPlansPage: React.FC = () => {
                                     {c.role === 'registrar' && plan?.pmDutyId && (
                                       <Select
                                         placeholder="Supporting..."
-                                        data={consultantOptions}
+                                        data={getConsultantOptionsForSlot(weekNo, day.value, 'PM')}
                                         value={plan?.pmSupportingClinicianId?.toString() ?? null}
                                         onChange={(v) => setCell(c.id, weekNo, day.value, 'pmSupportingClinicianId', v ? Number(v) : null)}
                                         clearable
