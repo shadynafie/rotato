@@ -15,7 +15,7 @@ export async function shareTokenRoutes(app: FastifyInstance) {
 
     // Create new token
     const token = crypto.randomBytes(24).toString('hex');
-    const created = await prisma.shareToken.create({ data: { token, description: 'Public link' } });
+    const created = await prisma.shareToken.create({ data: { token, description: 'Public link', active: true } });
     await logAudit({ actorUserId: request.user?.sub, action: 'create', entity: 'shareToken', entityId: created.id, after: created });
     return created;
   });

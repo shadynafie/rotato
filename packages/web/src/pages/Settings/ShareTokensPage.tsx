@@ -1,4 +1,5 @@
 import { ActionIcon, Badge, Box, Button, Group, Loader, Stack, Table, Text, Tooltip, Accordion } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -97,12 +98,23 @@ export const ShareTokensPage: React.FC = () => {
   const tokensQuery = useQuery({ queryKey: ['shareTokens'], queryFn: fetchTokens });
   const cliniciansQuery = useQuery({ queryKey: ['clinicians'], queryFn: fetchClinicians });
   const createMutation = useMutation({
-    mutationFn: async () => api.post('/api/share-tokens'),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['shareTokens'] })
+    mutationFn: async () => {
+      const res = await api.post<ShareToken>('/api/share-tokens');
+      return res.data;
+    },
+    onSuccess: (newToken) => {
+      qc.invalidateQueries({ queryKey: ['shareTokens'] });
+      notifications.show({
+        title: 'New token generated',
+        message: `Token created: ${newToken.token.slice(0, 8)}... All previous tokens have been deleted.`,
+        color: 'green',
+        autoClose: 5000,
+      });
+    }
   });
 
-  // Get the most recent active token (sorted by createdAt desc from API)
-  const activeToken = tokensQuery.data?.find(t => t.active);
+  // Get the token (there's only one since we delete all others when creating)
+  const activeToken = tokensQuery.data?.[0];
   const baseUrl = window.location.origin;
 
   const getIcalUrl = (clinicianId?: number) => {
