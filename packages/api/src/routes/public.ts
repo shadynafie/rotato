@@ -142,6 +142,8 @@ export async function publicRoutes(app: FastifyInstance) {
         events.push({
           title,
           start: [year, month, day, startHour, 0],
+          startInputType: 'local',
+          startOutputType: 'local',
           duration: { hours: 4 },
           description: clinicianId ? undefined : entry.clinicianName
         });
