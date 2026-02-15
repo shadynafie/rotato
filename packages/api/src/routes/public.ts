@@ -147,7 +147,7 @@ export async function publicRoutes(app: FastifyInstance) {
         // Always create separate AM and PM events
         const startHour = isAM ? 9 : 13;
         events.push({
-          title: `${title} (${isAM ? 'AM' : 'PM'})`,
+          title,
           start: [year, month, day, startHour, 0],
           duration: { hours: 4 },
           description: clinicianId ? undefined : entry.clinicianName
