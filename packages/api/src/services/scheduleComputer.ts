@@ -67,7 +67,7 @@ function computeOncallClinicianId(
 export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEntry[]> {
   // Fetch all required data
   const [clinicians, jobPlans, oncallCycles, leaves, manualOverrides, duties, coverageAssignments] = await Promise.all([
-    prisma.clinician.findMany({ where: { active: true } }),
+    prisma.clinician.findMany({ where: { active: true }, orderBy: [{ role: 'asc' }, { name: 'asc' }] }),
     prisma.jobPlanWeek.findMany({ include: { amDuty: true, pmDuty: true } }),
     prisma.oncallCycle.findMany(),
     prisma.leave.findMany({
@@ -333,7 +333,7 @@ export async function getTodayOncall(): Promise<{
 
   const [oncallCycles, clinicians] = await Promise.all([
     prisma.oncallCycle.findMany(),
-    prisma.clinician.findMany({ where: { active: true } })
+    prisma.clinician.findMany({ where: { active: true }, orderBy: [{ role: 'asc' }, { name: 'asc' }] })
   ]);
 
   const consultantCycles = oncallCycles.filter((c) => c.role === 'consultant');
