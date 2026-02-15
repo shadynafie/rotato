@@ -168,7 +168,8 @@ export async function coverageRoutes(app: FastifyInstance) {
     if (body.assignedRegistrarId !== undefined && body.assignedRegistrarId !== null) {
       updateData.status = 'assigned';
       updateData.assignedAt = new Date();
-      updateData.assignedBy = request.user?.sub;
+      const sub = request.user?.sub;
+      updateData.assignedBy = typeof sub === 'number' ? sub : (typeof sub === 'string' ? parseInt(sub, 10) : null);
     }
 
     // If unassigning (setting to null), revert to pending

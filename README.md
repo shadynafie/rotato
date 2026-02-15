@@ -13,8 +13,10 @@ Rotato helps clinical teams manage their on-call rotas and duty schedules. It's 
 ### Key Features
 
 - **On-Call Schedules** — Set up rotating on-call patterns for consultants and registrars
-- **Job Plans** — Define weekly duty templates that repeat automatically
+- **Job Plans** — Define weekly duty templates (clinics, theatres, admin) that repeat automatically
+- **Supporting Clinicians** — Link registrars to the consultants they're supporting for each clinic/theatre
 - **Leave Management** — Track annual leave, study leave, and sick days
+- **Coverage Suggestions** — When a registrar is on leave, get smart suggestions for who can cover
 - **Shareable Calendar** — Generate a link anyone can view (no login required)
 - **iCal Feed** — Sync with Google Calendar, Outlook, or your phone
 
@@ -76,7 +78,22 @@ Then access: `http://YOUR-SERVER-IP:3001`
 1. Go to **Settings** → **Clinicians**
 2. Click **Add Clinician** to add a new team member
 3. Set their role (Consultant or Registrar)
-4. Their name will now appear in the scheduling options
+4. For registrars, set their grade (Junior or Senior) — useful for matching cover
+5. Their name will now appear in the scheduling options
+
+### Setting Up Job Plans
+
+Job plans define what each clinician does on each day of the week, repeating on a 5-week cycle.
+
+1. Go to **Settings** → **Job Plans**
+2. Use the Week 1-5 tabs to set up each week's template
+3. For each clinician and day, select their AM and PM duties (Clinic, Theatre, Admin, etc.)
+4. **For registrars:** When you select a duty, you'll see a "Supporting..." dropdown
+   - This shows which consultant the registrar is working with
+   - Only consultants with the same duty on that slot are shown
+5. Click **Save Changes** when done
+
+> **Tip:** The calendar shows "Nafie Clinic" format — the consultant's surname plus the duty name — so everyone knows who's working together.
 
 ### Setting Up On-Call Rotas
 
@@ -94,6 +111,16 @@ Then access: `http://YOUR-SERVER-IP:3001`
 4. Choose the type: Annual, Study, Sick, or Professional
 5. The calendar will show them as unavailable
 
+### Managing Coverage
+
+When a registrar goes on leave, their supporting consultant may need cover. Rotato helps track this.
+
+1. Go to **Settings** → **Coverage**
+2. You'll see pending coverage requests (automatically created when registrars take leave)
+3. Click on a request to see suggested registrars who are available
+4. Assign a registrar to provide cover, or use **Auto-Assign** for smart suggestions
+5. The suggestions consider workload balance and availability
+
 ### Sharing the Rota
 
 1. Go to **Settings** → **Share Links**
@@ -107,6 +134,15 @@ Then access: `http://YOUR-SERVER-IP:3001`
 
 **Q: Can multiple people edit the rota at once?**
 A: Currently, Rotato has a single admin account. Multiple admin support is planned for a future release.
+
+**Q: What happens if a registrar is on leave?**
+A: Rotato automatically creates a coverage request for any clinic/theatre they were supporting. Go to **Settings** → **Coverage** to see pending requests and assign cover.
+
+**Q: How do I know which registrar to assign for cover?**
+A: Rotato suggests available registrars based on who's free that day. It considers workload balance so no one gets overloaded.
+
+**Q: What does "Supporting" mean in Job Plans?**
+A: When a registrar is assigned to a clinic or theatre, the "Supporting" field shows which consultant they're working with. This appears in the calendar as "Nafie Clinic" (surname + duty).
 
 **Q: What happens if someone is on leave during their on-call?**
 A: The leave will be shown on the calendar. You'll need to arrange cover manually and can add a manual override if needed.
