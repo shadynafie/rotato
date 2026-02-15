@@ -9,6 +9,7 @@ type Clinician = {
   id: number;
   name: string;
   role: 'consultant' | 'registrar';
+  grade?: 'junior' | 'senior' | null;
   email?: string | null;
   active: boolean;
   notifyEmail: boolean;
@@ -123,6 +124,7 @@ export const CliniciansPage: React.FC = () => {
     setForm({
       name: c.name,
       role: c.role,
+      grade: c.grade,
       email: c.email || '',
       active: c.active,
       notifyEmail: c.notifyEmail,
@@ -217,14 +219,27 @@ export const CliniciansPage: React.FC = () => {
                     <Text fw={500} c="#1d1d1f">{c.name}</Text>
                   </Table.Td>
                   <Table.Td>
-                    <Badge
-                      variant="light"
-                      color={c.role === 'consultant' ? 'blue' : 'grape'}
-                      radius="md"
-                      tt="capitalize"
-                    >
-                      {c.role}
-                    </Badge>
+                    <Group gap="xs">
+                      <Badge
+                        variant="light"
+                        color={c.role === 'consultant' ? 'blue' : 'grape'}
+                        radius="md"
+                        tt="capitalize"
+                      >
+                        {c.role}
+                      </Badge>
+                      {c.role === 'registrar' && c.grade && (
+                        <Badge
+                          variant="outline"
+                          color="grape"
+                          radius="md"
+                          size="sm"
+                          tt="capitalize"
+                        >
+                          {c.grade}
+                        </Badge>
+                      )}
+                    </Group>
                   </Table.Td>
                   <Table.Td>
                     <Text c={c.email ? '#1d1d1f' : 'dimmed'}>{c.email || 'Not set'}</Text>
@@ -313,7 +328,12 @@ export const CliniciansPage: React.FC = () => {
             <Select
               label="Role"
               value={form.role}
-              onChange={(v) => setForm((f) => ({ ...f, role: v as any }))}
+              onChange={(v) => setForm((f) => ({
+                ...f,
+                role: v as any,
+                // Clear grade when switching to consultant
+                grade: v === 'consultant' ? null : f.grade
+              }))}
               data={[
                 { value: 'consultant', label: 'Consultant' },
                 { value: 'registrar', label: 'Registrar' }
@@ -323,6 +343,24 @@ export const CliniciansPage: React.FC = () => {
               }}
             />
           </Box>
+          {form.role === 'registrar' && (
+            <Box mb={16}>
+              <Select
+                label="Grade"
+                value={form.grade || null}
+                onChange={(v) => setForm((f) => ({ ...f, grade: v as any }))}
+                data={[
+                  { value: 'junior', label: 'Junior Registrar' },
+                  { value: 'senior', label: 'Senior Registrar' }
+                ]}
+                placeholder="Select grade"
+                clearable
+                styles={{
+                  label: { marginBottom: 8, fontWeight: 500 },
+                }}
+              />
+            </Box>
+          )}
           <Box mb={24}>
             <TextInput
               label="Email"

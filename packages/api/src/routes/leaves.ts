@@ -3,7 +3,12 @@ import { prisma } from '../prisma.js';
 import { requireAuth } from '../utils/auth.js';
 import { logAudit } from '../utils/audit.js';
 import { z } from 'zod';
-import { Sessions, LeaveTypes } from '../types/enums.js';
+import { Sessions, LeaveTypes, type Session } from '../types/enums.js';
+import {
+  detectCoverageNeedsForClinician,
+  createCoverageRequests,
+  cancelCoverageRequestsForLeave
+} from '../services/coverageDetector.js';
 
 const leaveSchema = z.object({
   clinicianId: z.number(),
@@ -63,6 +68,13 @@ export async function leaveRoutes(app: FastifyInstance) {
       entityId: created.id,
       after: created
     });
+
+    // Detect and create coverage requests for this leave
+    const needs = await detectCoverageNeedsForClinician(body.clinicianId, body.date, body.date);
+    if (needs.length > 0) {
+      await createCoverageRequests(needs);
+    }
+
     return created;
   });
 
@@ -108,12 +120,30 @@ export async function leaveRoutes(app: FastifyInstance) {
       }
     }
 
+    // Detect and create coverage requests for the date range
+    if (created.length > 0) {
+      const needs = await detectCoverageNeedsForClinician(body.clinicianId, body.fromDate, body.toDate);
+      if (needs.length > 0) {
+        await createCoverageRequests(needs);
+      }
+    }
+
     return { created, count: created.length };
   });
 
   app.delete('/api/leaves/:id', { preHandler: requireAuth }, async (request) => {
     const id = Number((request.params as { id: string }).id);
     const before = await prisma.leave.findUnique({ where: { id } });
+
+    if (before) {
+      // Cancel any coverage requests associated with this leave
+      await cancelCoverageRequestsForLeave(
+        before.clinicianId,
+        before.date,
+        before.session as Session
+      );
+    }
+
     await prisma.leave.delete({ where: { id } });
     await logAudit({
       actorUserId: request.user?.sub,

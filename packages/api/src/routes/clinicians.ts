@@ -4,14 +4,26 @@ import { requireAuth } from '../utils/auth.js';
 import { logAudit } from '../utils/audit.js';
 import { z } from 'zod';
 
-const clinicianSchema = z.object({
+const clinicianBaseSchema = z.object({
   name: z.string(),
   role: z.enum(['consultant', 'registrar']),
+  grade: z.enum(['junior', 'senior']).nullable().optional(),
   email: z.string().email().optional(),
   notifyEmail: z.boolean().optional(),
   notifyWhatsapp: z.boolean().optional(),
   active: z.boolean().optional()
 });
+
+// For create: apply validation that grade is only for registrars
+const clinicianCreateSchema = clinicianBaseSchema.refine((data) => {
+  if (data.role === 'consultant' && data.grade) {
+    return false;
+  }
+  return true;
+}, { message: 'Grade can only be set for registrars' });
+
+// For update: partial schema without the refinement (validation done in handler)
+const clinicianUpdateSchema = clinicianBaseSchema.partial();
 
 export async function clinicianRoutes(app: FastifyInstance) {
   app.get('/api/clinicians', { preHandler: requireAuth }, async () => {
@@ -20,7 +32,7 @@ export async function clinicianRoutes(app: FastifyInstance) {
   });
 
   app.post('/api/clinicians', { preHandler: requireAuth }, async (request) => {
-    const body = clinicianSchema.parse(request.body);
+    const body = clinicianCreateSchema.parse(request.body);
     const created = await prisma.clinician.create({ data: body });
     await logAudit({ actorUserId: request.user?.sub, action: 'create', entity: 'clinician', entityId: created.id, after: created });
     return created;
@@ -28,7 +40,7 @@ export async function clinicianRoutes(app: FastifyInstance) {
 
   app.patch('/api/clinicians/:id', { preHandler: requireAuth }, async (request) => {
     const id = Number((request.params as { id: string }).id);
-    const body = clinicianSchema.partial().parse(request.body);
+    const body = clinicianUpdateSchema.parse(request.body);
     const before = await prisma.clinician.findUnique({ where: { id } });
     const updated = await prisma.clinician.update({ where: { id }, data: body });
     await logAudit({ actorUserId: request.user?.sub, action: 'update', entity: 'clinician', entityId: id, before, after: updated });
@@ -47,6 +59,9 @@ export async function clinicianRoutes(app: FastifyInstance) {
       await tx.rotaEntry.deleteMany({ where: { clinicianId: id } });
       await tx.leave.deleteMany({ where: { clinicianId: id } });
       await tx.notification.deleteMany({ where: { clinicianId: id } });
+      // Delete coverage requests (as consultant or assigned registrar)
+      await tx.coverageRequest.deleteMany({ where: { consultantId: id } });
+      await tx.coverageRequest.deleteMany({ where: { assignedRegistrarId: id } });
       // Finally delete the clinician
       await tx.clinician.delete({ where: { id } });
     });

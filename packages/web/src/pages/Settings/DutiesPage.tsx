@@ -1,4 +1,4 @@
-import { ActionIcon, Box, Button, Group, Loader, Modal, SimpleGrid, Table, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
+import { ActionIcon, Badge, Box, Button, Group, Loader, Modal, SimpleGrid, Switch, Table, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import React, { useState } from 'react';
@@ -21,7 +21,7 @@ const COLOR_SWATCHES = [
   { color: '#8b5cf6', name: 'Violet' },
 ];
 
-type Duty = { id: number; name: string; color?: string | null };
+type Duty = { id: number; name: string; color?: string | null; requiresRegistrar?: boolean };
 
 const fetchDuties = async () => {
   const res = await api.get<Duty[]>('/api/duties');
@@ -34,11 +34,12 @@ export const DutiesPage: React.FC = () => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [color, setColor] = useState('#0071e3');
+  const [requiresRegistrar, setRequiresRegistrar] = useState(false);
 
   const listQuery = useQuery({ queryKey: ['duties'], queryFn: fetchDuties });
 
   const createMutation = useMutation({
-    mutationFn: async () => api.post('/api/duties', { name, color }),
+    mutationFn: async () => api.post('/api/duties', { name, color, requiresRegistrar }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['duties'] });
       notifications.show({
@@ -57,7 +58,7 @@ export const DutiesPage: React.FC = () => {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, payload }: { id: number; payload: { name: string; color: string } }) =>
+    mutationFn: async ({ id, payload }: { id: number; payload: { name: string; color: string; requiresRegistrar: boolean } }) =>
       api.patch(`/api/duties/${id}`, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['duties'] });
@@ -113,6 +114,7 @@ export const DutiesPage: React.FC = () => {
     setEditingId(null);
     setName('');
     setColor('#0071e3');
+    setRequiresRegistrar(false);
     setModalOpen(true);
   };
 
@@ -120,18 +122,20 @@ export const DutiesPage: React.FC = () => {
     setEditingId(d.id);
     setName(d.name);
     setColor(d.color || '#0071e3');
+    setRequiresRegistrar(d.requiresRegistrar || false);
     setModalOpen(true);
   };
 
   const onSave = async () => {
     try {
       if (editingId) {
-        await updateMutation.mutateAsync({ id: editingId, payload: { name, color } });
+        await updateMutation.mutateAsync({ id: editingId, payload: { name, color, requiresRegistrar } });
       } else {
         await createMutation.mutateAsync();
       }
       setName('');
       setColor('#0071e3');
+      setRequiresRegistrar(false);
       setEditingId(null);
       setModalOpen(false);
     } catch (e) {
@@ -228,6 +232,7 @@ export const DutiesPage: React.FC = () => {
             <Table.Thead>
               <Table.Tr style={{ backgroundColor: '#fafafa' }}>
                 <Table.Th>Duty Name</Table.Th>
+                <Table.Th style={{ width: 140 }}>Registrar</Table.Th>
                 <Table.Th style={{ width: 80 }}>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -246,6 +251,13 @@ export const DutiesPage: React.FC = () => {
                       />
                       <Text fw={500} c="#1d1d1f">{d.name}</Text>
                     </Group>
+                  </Table.Td>
+                  <Table.Td>
+                    {d.requiresRegistrar && (
+                      <Badge variant="light" color="grape" radius="md" size="sm">
+                        Required
+                      </Badge>
+                    )}
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs">
@@ -311,7 +323,7 @@ export const DutiesPage: React.FC = () => {
               }}
             />
           </Box>
-          <Box mb={24}>
+          <Box mb={16}>
             <Text fw={500} mb={8} size="sm">Color</Text>
             <SimpleGrid cols={6} spacing="xs">
               {COLOR_SWATCHES.map((swatch) => (
@@ -340,6 +352,15 @@ export const DutiesPage: React.FC = () => {
                 </Tooltip>
               ))}
             </SimpleGrid>
+          </Box>
+          <Box mb={24}>
+            <Switch
+              label="Requires Registrar"
+              description="This activity needs registrar coverage when scheduled"
+              checked={requiresRegistrar}
+              onChange={(e) => setRequiresRegistrar(e.currentTarget.checked)}
+              color="grape"
+            />
           </Box>
           <Group justify="flex-end" gap="sm">
             <Button

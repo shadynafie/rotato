@@ -7,6 +7,7 @@ import { z } from 'zod';
 const dutySchema = z.object({
   name: z.string(),
   color: z.string().optional(),
+  requiresRegistrar: z.boolean().optional(),
   active: z.boolean().optional()
 });
 
@@ -42,6 +43,8 @@ export async function dutyRoutes(app: FastifyInstance) {
       await tx.jobPlanWeek.updateMany({ where: { pmDutyId: id }, data: { pmDutyId: null } });
       // Remove duty references from rota entries (set to null)
       await tx.rotaEntry.updateMany({ where: { dutyId: id }, data: { dutyId: null } });
+      // Delete coverage requests for this duty
+      await tx.coverageRequest.deleteMany({ where: { dutyId: id } });
       // Finally delete the duty
       await tx.duty.delete({ where: { id } });
     });

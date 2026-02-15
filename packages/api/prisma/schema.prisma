@@ -9,9 +9,12 @@ datasource db {
 
 // Note: SQLite doesn't support enums, so we use String with validation in code
 // ClinicianRole: "consultant" | "registrar"
+// RegistrarGrade: "junior" | "senior"
 // Session: "AM" | "PM" | "FULL"
 // RotaSource: "jobplan" | "oncall" | "manual" | "leave"
 // LeaveType: "annual" | "study" | "sick" | "professional"
+// CoverageReason: "leave" | "oncall_conflict" | "manual"
+// CoverageStatus: "pending" | "assigned" | "cancelled"
 // NotificationChannel: "email" | "whatsapp_stub"
 // NotificationType: "change" | "digest" | "test"
 // NotificationStatus: "pending" | "sent" | "failed"
@@ -31,6 +34,7 @@ model Clinician {
   id              Int           @id @default(autoincrement())
   name            String
   role            String        // "consultant" | "registrar"
+  grade           String?       // null for consultants, "junior" | "senior" for registrars
   email           String?
   notifyEmail     Boolean       @default(true)
   notifyWhatsapp  Boolean       @default(false)
@@ -42,18 +46,22 @@ model Clinician {
   rotaEntries     RotaEntry[]
   leaves          Leave[]
   notifications   Notification[]
+  coverageRequestsAsConsultant CoverageRequest[] @relation("CoverageConsultant")
+  coverageAssignmentsAsRegistrar CoverageRequest[] @relation("CoverageRegistrar")
 }
 
 model Duty {
-  id          Int           @id @default(autoincrement())
-  name        String
-  color       String?
-  active      Boolean       @default(true)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  jobPlanAm   JobPlanWeek[] @relation("JobPlanWeek_amDuty")
-  jobPlanPm   JobPlanWeek[] @relation("JobPlanWeek_pmDuty")
-  rotaEntries RotaEntry[]
+  id                Int           @id @default(autoincrement())
+  name              String
+  color             String?
+  requiresRegistrar Boolean       @default(false)
+  active            Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  jobPlanAm         JobPlanWeek[] @relation("JobPlanWeek_amDuty")
+  jobPlanPm         JobPlanWeek[] @relation("JobPlanWeek_pmDuty")
+  rotaEntries       RotaEntry[]
+  coverageRequests  CoverageRequest[]
 }
 
 model JobPlanWeek {
@@ -155,4 +163,27 @@ model ShareToken {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   lastUsedAt  DateTime?
+}
+
+model CoverageRequest {
+  id                  Int        @id @default(autoincrement())
+  date                DateTime
+  session             String     // "AM" | "PM"
+  consultantId        Int
+  consultant          Clinician  @relation("CoverageConsultant", fields: [consultantId], references: [id])
+  dutyId              Int
+  duty                Duty       @relation(fields: [dutyId], references: [id])
+  reason              String     // "leave" | "oncall_conflict" | "manual"
+  status              String     @default("pending") // "pending" | "assigned" | "cancelled"
+  assignedRegistrarId Int?
+  assignedRegistrar   Clinician? @relation("CoverageRegistrar", fields: [assignedRegistrarId], references: [id])
+  assignedBy          Int?
+  assignedAt          DateTime?
+  note                String?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  @@unique([date, session, consultantId, dutyId])
+  @@index([date])
+  @@index([status])
 }

@@ -71,60 +71,122 @@ export async function publicRoutes(app: FastifyInstance) {
     const valid = await validateToken(token);
     if (!valid) return reply.unauthorized();
 
-    // Parse optional clinician filter
+    // Parse optional clinician filter and date range
     const query = z
       .object({
-        clinician: z.string().optional()
+        clinician: z.string().optional(),
+        from: z.string().optional(),
+        to: z.string().optional()
       })
       .parse(request.query);
 
-    // Build where clause for filtering
-    const where: { clinicianId?: number } = {};
-    if (query.clinician) {
-      const clinicianId = parseInt(query.clinician, 10);
-      if (!isNaN(clinicianId)) {
-        where.clinicianId = clinicianId;
+    // Default to 3 months back and 6 months forward
+    const today = new Date();
+    const from = query.from
+      ? new Date(query.from)
+      : new Date(today.getFullYear(), today.getMonth() - 3, 1);
+    const to = query.to
+      ? new Date(query.to)
+      : new Date(today.getFullYear(), today.getMonth() + 6, 0);
+
+    // Normalize times
+    from.setHours(0, 0, 0, 0);
+    to.setHours(23, 59, 59, 999);
+
+    // Use computeSchedule for consistent data with UI
+    const schedule = await computeSchedule(from, to);
+
+    // Filter by clinician if specified
+    const clinicianId = query.clinician ? parseInt(query.clinician, 10) : null;
+    const filteredSchedule = clinicianId
+      ? schedule.filter(e => e.clinicianId === clinicianId)
+      : schedule;
+
+    // Group entries by clinician+date to handle AM/PM sessions properly
+    // For on-call, combine AM+PM into single all-day event
+    const eventMap = new Map<string, {
+      clinicianName: string;
+      date: string;
+      isOncall: boolean;
+      isLeave: boolean;
+      leaveType: string | null;
+      dutyName: string | null;
+      sessions: string[];
+    }>();
+
+    for (const entry of filteredSchedule) {
+      // Skip empty entries (no duty, not on-call, not on leave)
+      if (!entry.dutyName && !entry.isOncall && !entry.isLeave) continue;
+
+      const key = `${entry.clinicianId}-${entry.date}-${entry.isOncall}-${entry.isLeave}-${entry.dutyName || 'none'}`;
+
+      if (eventMap.has(key)) {
+        eventMap.get(key)!.sessions.push(entry.session);
+      } else {
+        eventMap.set(key, {
+          clinicianName: entry.clinicianName,
+          date: entry.date,
+          isOncall: entry.isOncall,
+          isLeave: entry.isLeave,
+          leaveType: entry.leaveType,
+          dutyName: entry.dutyName,
+          sessions: [entry.session]
+        });
       }
     }
 
-    const entries = await prisma.rotaEntry.findMany({
-      where,
-      include: { clinician: true, duty: true }
-    });
+    const events: ics.EventAttributes[] = [];
 
-    const events = entries.map((e) => {
-      const dateObj = new Date(e.date);
-      // Determine start time based on session
-      let startHour = 9;
-      if (e.session === 'PM') startHour = 13;
-      if (e.session === 'FULL') startHour = 8;
+    for (const entry of eventMap.values()) {
+      const [year, month, day] = entry.date.split('-').map(Number);
+      const hasAM = entry.sessions.includes('AM');
+      const hasPM = entry.sessions.includes('PM');
+      const isFullDay = hasAM && hasPM;
 
-      const start: [number, number, number, number, number] = [
-        dateObj.getFullYear(),
-        dateObj.getMonth() + 1,
-        dateObj.getDate(),
-        startHour,
-        0
-      ];
+      // Determine title
+      let title: string;
+      if (entry.isLeave) {
+        const leaveLabel = entry.leaveType
+          ? entry.leaveType.charAt(0).toUpperCase() + entry.leaveType.slice(1) + ' Leave'
+          : 'Leave';
+        title = clinicianId ? leaveLabel : `${entry.clinicianName} - ${leaveLabel}`;
+      } else if (entry.isOncall) {
+        title = clinicianId ? 'On-call' : `${entry.clinicianName} - On-call`;
+      } else {
+        title = clinicianId
+          ? (entry.dutyName || 'Duty')
+          : `${entry.clinicianName} - ${entry.dutyName || 'Duty'}`;
+      }
 
-      // Determine duration based on session
-      let durationHours = 4;
-      if (e.session === 'FULL' || e.isOncall) durationHours = 12;
+      if (entry.isOncall || entry.isLeave) {
+        // On-call and leave: create all-day event
+        events.push({
+          title,
+          start: [year, month, day],
+          end: [year, month, day + 1],
+          description: clinicianId ? undefined : entry.clinicianName
+        });
+      } else if (isFullDay) {
+        // Full day duty: 9:00-17:00
+        events.push({
+          title,
+          start: [year, month, day, 9, 0],
+          duration: { hours: 8 },
+          description: clinicianId ? undefined : entry.clinicianName
+        });
+      } else {
+        // Half day
+        const startHour = hasAM ? 9 : 13;
+        events.push({
+          title: clinicianId ? title : `${title} (${hasAM ? 'AM' : 'PM'})`,
+          start: [year, month, day, startHour, 0],
+          duration: { hours: 4 },
+          description: clinicianId ? undefined : entry.clinicianName
+        });
+      }
+    }
 
-      // Build title - include clinician name only if showing all
-      const title = query.clinician
-        ? (e.isOncall ? 'On-call' : e.duty?.name || 'Duty')
-        : `${e.clinician.name} - ${e.isOncall ? 'On-call' : e.duty?.name || 'Duty'}`;
-
-      return {
-        title,
-        start,
-        duration: { hours: durationHours },
-        description: query.clinician ? undefined : `${e.clinician.name} - ${e.session}`
-      };
-    });
-
-    const { error, value } = ics.createEvents(events as ics.EventAttributes[]);
+    const { error, value } = ics.createEvents(events);
     if (error) {
       app.log.error(error);
       return reply.internalServerError();
