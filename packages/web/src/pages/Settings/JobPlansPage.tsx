@@ -58,6 +58,12 @@ export const JobPlansPage: React.FC = () => {
     return map;
   }, [data?.jobPlans]);
 
+  // Extract surname from full name (last word)
+  const getSurname = (fullName: string) => {
+    const parts = fullName.trim().split(/\s+/);
+    return parts[parts.length - 1];
+  };
+
   // Get consultant options for a specific slot (only those with the SAME duty as the registrar)
   const getConsultantOptionsForSlot = (weekNo: number, dayOfWeek: number, session: 'AM' | 'PM', registrarDutyId: number | null | undefined) => {
     if (!registrarDutyId) return [];
@@ -73,9 +79,10 @@ export const JobPlansPage: React.FC = () => {
       // Only show consultants with the same duty as the registrar
       if (consultantDutyId === registrarDutyId) {
         const dutyName = dutyById.get(consultantDutyId) || 'Duty';
+        const surname = getSurname(consultant.name);
         options.push({
           value: consultant.id.toString(),
-          label: `${consultant.name} - ${dutyName}`
+          label: `${surname} ${dutyName}`
         });
       }
     }

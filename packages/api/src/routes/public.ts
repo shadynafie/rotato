@@ -155,10 +155,13 @@ export async function publicRoutes(app: FastifyInstance) {
       } else if (entry.isOncall) {
         title = clinicianId ? 'On-call' : `${entry.clinicianName} - On-call`;
       } else {
-        // For duties, show supporting consultant name if present (e.g., "Nafie's Clinic")
+        // For duties, show supporting consultant surname if present (e.g., "Nafie Clinic")
         let dutyLabel = entry.dutyName || 'Duty';
         if (entry.supportingClinicianName) {
-          dutyLabel = `${entry.supportingClinicianName}'s ${dutyLabel}`;
+          // Extract surname (last word of name)
+          const nameParts = entry.supportingClinicianName.trim().split(/\s+/);
+          const surname = nameParts[nameParts.length - 1];
+          dutyLabel = `${surname} ${dutyLabel}`;
         }
         title = clinicianId ? dutyLabel : `${entry.clinicianName} - ${dutyLabel}`;
       }
