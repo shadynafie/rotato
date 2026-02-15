@@ -182,7 +182,10 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
       const res = await api.get<{ count: number }>('/api/coverage/pending-count');
       return res.data;
     },
-    refetchInterval: 30000, // Refresh every 30 seconds
+    staleTime: 60000, // Consider data fresh for 1 minute (no refetch on mount)
+    gcTime: 300000, // Keep in cache for 5 minutes
+    refetchInterval: 30000, // Background refresh every 30 seconds
+    refetchOnWindowFocus: false, // Don't refetch when switching tabs
   });
   const pendingCoverageCount = pendingData?.count ?? 0;
 
