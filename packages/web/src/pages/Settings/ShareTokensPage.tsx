@@ -342,7 +342,9 @@ export const ShareTokensPage: React.FC = () => {
             <Group justify="space-between">
               <Group gap="sm">
                 <Badge variant="light" color="green" radius="md">Active</Badge>
-                <Text size="sm" c="dimmed">Share token is active</Text>
+                <Text size="sm" c="dimmed">
+                  Share token is active, generated {new Date(activeToken.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </Text>
               </Group>
               <Button
                 variant="subtle"
