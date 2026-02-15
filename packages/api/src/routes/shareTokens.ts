@@ -10,11 +10,8 @@ export async function shareTokenRoutes(app: FastifyInstance) {
   });
 
   app.post('/api/share-tokens', { preHandler: requireAuth }, async (request) => {
-    // Deactivate all existing tokens first
-    await prisma.shareToken.updateMany({
-      where: { active: true },
-      data: { active: false }
-    });
+    // Delete all existing tokens - only keep one active token
+    await prisma.shareToken.deleteMany({});
 
     // Create new token
     const token = crypto.randomBytes(24).toString('hex');
