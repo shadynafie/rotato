@@ -111,6 +111,7 @@ export async function publicRoutes(app: FastifyInstance) {
       isLeave: boolean;
       leaveType: string | null;
       dutyName: string | null;
+      supportingClinicianName: string | null;
       sessions: string[];
     }>();
 
@@ -118,7 +119,7 @@ export async function publicRoutes(app: FastifyInstance) {
       // Skip empty entries (no duty, not on-call, not on leave)
       if (!entry.dutyName && !entry.isOncall && !entry.isLeave) continue;
 
-      const key = `${entry.clinicianId}-${entry.date}-${entry.isOncall}-${entry.isLeave}-${entry.dutyName || 'none'}`;
+      const key = `${entry.clinicianId}-${entry.date}-${entry.isOncall}-${entry.isLeave}-${entry.dutyName || 'none'}-${entry.supportingClinicianName || 'none'}`;
 
       if (eventMap.has(key)) {
         eventMap.get(key)!.sessions.push(entry.session);
@@ -130,6 +131,7 @@ export async function publicRoutes(app: FastifyInstance) {
           isLeave: entry.isLeave,
           leaveType: entry.leaveType,
           dutyName: entry.dutyName,
+          supportingClinicianName: entry.supportingClinicianName,
           sessions: [entry.session]
         });
       }
@@ -153,9 +155,12 @@ export async function publicRoutes(app: FastifyInstance) {
       } else if (entry.isOncall) {
         title = clinicianId ? 'On-call' : `${entry.clinicianName} - On-call`;
       } else {
-        title = clinicianId
-          ? (entry.dutyName || 'Duty')
-          : `${entry.clinicianName} - ${entry.dutyName || 'Duty'}`;
+        // For duties, show supporting consultant name if present (e.g., "Nafie's Clinic")
+        let dutyLabel = entry.dutyName || 'Duty';
+        if (entry.supportingClinicianName) {
+          dutyLabel = `${entry.supportingClinicianName}'s ${dutyLabel}`;
+        }
+        title = clinicianId ? dutyLabel : `${entry.clinicianName} - ${dutyLabel}`;
       }
 
       if (entry.isOncall || entry.isLeave) {

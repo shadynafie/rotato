@@ -7,6 +7,8 @@ export interface CoverageNeed {
   consultantId: number;
   dutyId: number;
   reason: CoverageReason;
+  // The registrar who is on leave (for tracking purposes)
+  absentRegistrarId?: number;
 }
 
 /**
@@ -36,25 +38,25 @@ function isWeekday(date: Date): boolean {
 
 /**
  * Detect coverage needs for a date range.
- * Finds consultant activities that:
- * 1. Have requiresRegistrar=true on the duty
- * 2. The consultant is on leave for that date/session
+ *
+ * Coverage is triggered when a REGISTRAR is on leave and they were:
+ * 1. Assigned to support a consultant for a duty (via supportingClinicianId)
+ * 2. That duty requires registrar support
+ *
+ * When a consultant is on leave, no coverage is needed because:
+ * - Clinic: registrar can continue independently
+ * - Theatre: list is cancelled, registrar is freed
  */
 export async function detectCoverageNeeds(from: Date, to: Date): Promise<CoverageNeed[]> {
   const needs: CoverageNeed[] = [];
 
-  // Get all consultants
-  const consultants = await prisma.clinician.findMany({
-    where: { role: 'consultant', active: true }
-  });
-
-  // Get all job plans with duties that require registrar
-  const jobPlans = await prisma.jobPlanWeek.findMany({
+  // Get registrar job plans where they support a consultant
+  const registrarJobPlans = await prisma.jobPlanWeek.findMany({
     where: {
-      clinician: { role: 'consultant', active: true },
+      clinician: { role: 'registrar', active: true },
       OR: [
-        { amDuty: { requiresRegistrar: true } },
-        { pmDuty: { requiresRegistrar: true } }
+        { amSupportingClinicianId: { not: null } },
+        { pmSupportingClinicianId: { not: null } }
       ]
     },
     include: {
@@ -64,28 +66,38 @@ export async function detectCoverageNeeds(from: Date, to: Date): Promise<Coverag
     }
   });
 
-  // Create a lookup map: clinicianId -> weekNo -> dayOfWeek -> { amDutyId, pmDutyId }
-  const planLookup = new Map<string, { amDutyId: number | null; pmDutyId: number | null; amRequires: boolean; pmRequires: boolean }>();
-  for (const plan of jobPlans) {
+  // Create a lookup: registrarId -> weekNo -> dayOfWeek -> job plan entry
+  const planLookup = new Map<string, {
+    amDutyId: number | null;
+    pmDutyId: number | null;
+    amSupportingClinicianId: number | null;
+    pmSupportingClinicianId: number | null;
+    amRequiresRegistrar: boolean;
+    pmRequiresRegistrar: boolean;
+  }>();
+
+  for (const plan of registrarJobPlans) {
     const key = `${plan.clinicianId}-${plan.weekNo}-${plan.dayOfWeek}`;
     planLookup.set(key, {
       amDutyId: plan.amDutyId,
       pmDutyId: plan.pmDutyId,
-      amRequires: plan.amDuty?.requiresRegistrar || false,
-      pmRequires: plan.pmDuty?.requiresRegistrar || false
+      amSupportingClinicianId: plan.amSupportingClinicianId,
+      pmSupportingClinicianId: plan.pmSupportingClinicianId,
+      amRequiresRegistrar: plan.amDuty?.requiresRegistrar || false,
+      pmRequiresRegistrar: plan.pmDuty?.requiresRegistrar || false
     });
   }
 
-  // Get all leaves in the date range for consultants
+  // Get all leaves in the date range for REGISTRARS
   const leaves = await prisma.leave.findMany({
     where: {
       date: { gte: from, lte: to },
-      clinician: { role: 'consultant', active: true }
+      clinician: { role: 'registrar', active: true }
     },
     include: { clinician: true }
   });
 
-  // For each leave, check if the consultant has a duty requiring registrar
+  // For each registrar leave, check if they were supporting a consultant
   for (const leave of leaves) {
     const leaveDate = new Date(leave.date);
 
@@ -99,25 +111,31 @@ export async function detectCoverageNeeds(from: Date, to: Date): Promise<Coverag
 
     if (!plan) continue;
 
-    // Check AM session
-    if ((leave.session === 'AM' || leave.session === 'FULL') && plan.amRequires && plan.amDutyId) {
+    // Check AM session - if registrar was supporting a consultant
+    if ((leave.session === 'AM' || leave.session === 'FULL') &&
+        plan.amSupportingClinicianId &&
+        plan.amDutyId) {
       needs.push({
         date: leaveDate,
         session: 'AM',
-        consultantId: leave.clinicianId,
+        consultantId: plan.amSupportingClinicianId,
         dutyId: plan.amDutyId,
-        reason: 'leave'
+        reason: 'leave',
+        absentRegistrarId: leave.clinicianId
       });
     }
 
     // Check PM session
-    if ((leave.session === 'PM' || leave.session === 'FULL') && plan.pmRequires && plan.pmDutyId) {
+    if ((leave.session === 'PM' || leave.session === 'FULL') &&
+        plan.pmSupportingClinicianId &&
+        plan.pmDutyId) {
       needs.push({
         date: leaveDate,
         session: 'PM',
-        consultantId: leave.clinicianId,
+        consultantId: plan.pmSupportingClinicianId,
         dutyId: plan.pmDutyId,
-        reason: 'leave'
+        reason: 'leave',
+        absentRegistrarId: leave.clinicianId
       });
     }
   }
@@ -127,7 +145,7 @@ export async function detectCoverageNeeds(from: Date, to: Date): Promise<Coverag
 
 /**
  * Detect coverage needs for a specific clinician in a date range.
- * Used when creating leave for a consultant.
+ * Now handles registrars - finds duties they were supporting.
  */
 export async function detectCoverageNeedsForClinician(
   clinicianId: number,
@@ -141,18 +159,18 @@ export async function detectCoverageNeedsForClinician(
     where: { id: clinicianId }
   });
 
-  // Only consultants can have coverage needs
-  if (!clinician || clinician.role !== 'consultant') {
+  // Only registrars trigger coverage needs (when they go on leave)
+  if (!clinician || clinician.role !== 'registrar') {
     return needs;
   }
 
-  // Get job plans for this clinician with duties requiring registrar
+  // Get job plans for this registrar where they support a consultant
   const jobPlans = await prisma.jobPlanWeek.findMany({
     where: {
       clinicianId,
       OR: [
-        { amDuty: { requiresRegistrar: true } },
-        { pmDuty: { requiresRegistrar: true } }
+        { amSupportingClinicianId: { not: null } },
+        { pmSupportingClinicianId: { not: null } }
       ]
     },
     include: {
@@ -162,18 +180,24 @@ export async function detectCoverageNeedsForClinician(
   });
 
   // Create lookup
-  const planLookup = new Map<string, { amDutyId: number | null; pmDutyId: number | null; amRequires: boolean; pmRequires: boolean }>();
+  const planLookup = new Map<string, {
+    amDutyId: number | null;
+    pmDutyId: number | null;
+    amSupportingClinicianId: number | null;
+    pmSupportingClinicianId: number | null;
+  }>();
+
   for (const plan of jobPlans) {
     const key = `${plan.weekNo}-${plan.dayOfWeek}`;
     planLookup.set(key, {
       amDutyId: plan.amDutyId,
       pmDutyId: plan.pmDutyId,
-      amRequires: plan.amDuty?.requiresRegistrar || false,
-      pmRequires: plan.pmDuty?.requiresRegistrar || false
+      amSupportingClinicianId: plan.amSupportingClinicianId,
+      pmSupportingClinicianId: plan.pmSupportingClinicianId
     });
   }
 
-  // Get leaves for this clinician in the date range
+  // Get leaves for this registrar in the date range
   const leaves = await prisma.leave.findMany({
     where: {
       clinicianId,
@@ -193,23 +217,31 @@ export async function detectCoverageNeedsForClinician(
 
     if (!plan) continue;
 
-    if ((leave.session === 'AM' || leave.session === 'FULL') && plan.amRequires && plan.amDutyId) {
+    // AM session coverage
+    if ((leave.session === 'AM' || leave.session === 'FULL') &&
+        plan.amSupportingClinicianId &&
+        plan.amDutyId) {
       needs.push({
         date: leaveDate,
         session: 'AM',
-        consultantId: clinicianId,
+        consultantId: plan.amSupportingClinicianId,
         dutyId: plan.amDutyId,
-        reason: 'leave'
+        reason: 'leave',
+        absentRegistrarId: clinicianId
       });
     }
 
-    if ((leave.session === 'PM' || leave.session === 'FULL') && plan.pmRequires && plan.pmDutyId) {
+    // PM session coverage
+    if ((leave.session === 'PM' || leave.session === 'FULL') &&
+        plan.pmSupportingClinicianId &&
+        plan.pmDutyId) {
       needs.push({
         date: leaveDate,
         session: 'PM',
-        consultantId: clinicianId,
+        consultantId: plan.pmSupportingClinicianId,
         dutyId: plan.pmDutyId,
-        reason: 'leave'
+        reason: 'leave',
+        absentRegistrarId: clinicianId
       });
     }
   }
@@ -258,28 +290,67 @@ export async function createCoverageRequests(needs: CoverageNeed[]): Promise<num
 /**
  * Cancel coverage requests for a specific leave entry.
  * Called when a leave is deleted.
+ * Now handles registrar leave cancellation.
  */
 export async function cancelCoverageRequestsForLeave(
   clinicianId: number,
   date: Date,
   session: Session
 ): Promise<number> {
+  // Get the clinician to check their role
+  const clinician = await prisma.clinician.findUnique({
+    where: { id: clinicianId }
+  });
+
+  if (!clinician || clinician.role !== 'registrar') {
+    return 0;
+  }
+
   const sessions = session === 'FULL' ? ['AM', 'PM'] : [session];
 
-  const result = await prisma.coverageRequest.updateMany({
+  // Find what consultant this registrar was supporting on this date
+  const dateObj = new Date(date);
+  const weekNo = weekOfMonth(dateObj);
+  const dayOfWeek = getDayOfWeek(dateObj);
+
+  const jobPlan = await prisma.jobPlanWeek.findUnique({
     where: {
-      consultantId: clinicianId,
-      date,
-      session: { in: sessions },
-      reason: 'leave',
-      status: 'pending' // Only cancel pending requests
-    },
-    data: {
-      status: 'cancelled'
+      clinicianId_weekNo_dayOfWeek: {
+        clinicianId,
+        weekNo,
+        dayOfWeek
+      }
     }
   });
 
-  return result.count;
+  if (!jobPlan) return 0;
+
+  let cancelled = 0;
+
+  for (const sess of sessions) {
+    const consultantId = sess === 'AM'
+      ? jobPlan.amSupportingClinicianId
+      : jobPlan.pmSupportingClinicianId;
+
+    if (!consultantId) continue;
+
+    const result = await prisma.coverageRequest.updateMany({
+      where: {
+        consultantId,
+        date: dateObj,
+        session: sess,
+        reason: 'leave',
+        status: 'pending'
+      },
+      data: {
+        status: 'cancelled'
+      }
+    });
+
+    cancelled += result.count;
+  }
+
+  return cancelled;
 }
 
 /**

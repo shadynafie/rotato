@@ -10,6 +10,9 @@ const jobPlanItem = z.object({
   dayOfWeek: z.number().int().min(1).max(5), // 1=Monday, 2=Tuesday, etc.
   amDutyId: z.number().optional().nullable(),
   pmDutyId: z.number().optional().nullable(),
+  // For registrars: which consultant they support for this duty (null = independent duty)
+  amSupportingClinicianId: z.number().optional().nullable(),
+  pmSupportingClinicianId: z.number().optional().nullable(),
   notes: z.string().optional().nullable()
 });
 
@@ -39,6 +42,8 @@ export async function jobPlanRoutes(app: FastifyInstance) {
           update: {
             amDutyId: item.amDutyId ?? null,
             pmDutyId: item.pmDutyId ?? null,
+            amSupportingClinicianId: item.amSupportingClinicianId ?? null,
+            pmSupportingClinicianId: item.pmSupportingClinicianId ?? null,
             notes: item.notes ?? null
           },
           create: {
@@ -47,6 +52,8 @@ export async function jobPlanRoutes(app: FastifyInstance) {
             dayOfWeek: item.dayOfWeek,
             amDutyId: item.amDutyId ?? null,
             pmDutyId: item.pmDutyId ?? null,
+            amSupportingClinicianId: item.amSupportingClinicianId ?? null,
+            pmSupportingClinicianId: item.pmSupportingClinicianId ?? null,
             notes: item.notes ?? null
           }
         });

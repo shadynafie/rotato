@@ -12,6 +12,8 @@ type JobPlanWeek = {
   dayOfWeek: number; // 1=Monday, 2=Tuesday, ..., 5=Friday
   amDutyId?: number | null;
   pmDutyId?: number | null;
+  amSupportingClinicianId?: number | null;
+  pmSupportingClinicianId?: number | null;
 };
 
 const fetchJobPlanData = async () => {
@@ -41,6 +43,13 @@ export const JobPlansPage: React.FC = () => {
   const dutyOptions = useMemo(
     () => (data?.duties || []).map((d) => ({ value: d.id.toString(), label: d.name })),
     [data?.duties]
+  );
+
+  const consultantOptions = useMemo(
+    () => (data?.clinicians || [])
+      .filter((c) => c.role === 'consultant')
+      .map((c) => ({ value: c.id.toString(), label: c.name })),
+    [data?.clinicians]
   );
 
   const planByKey = useMemo(() => {
@@ -73,10 +82,21 @@ export const JobPlansPage: React.FC = () => {
     },
   });
 
-  const setCell = (clinicianId: number, weekNo: number, dayOfWeek: number, field: 'amDutyId' | 'pmDutyId', value: number | null) => {
+  const setCell = (
+    clinicianId: number,
+    weekNo: number,
+    dayOfWeek: number,
+    field: 'amDutyId' | 'pmDutyId' | 'amSupportingClinicianId' | 'pmSupportingClinicianId',
+    value: number | null
+  ) => {
     const key = `${clinicianId}-${weekNo}-${dayOfWeek}`;
     const existing = dirty[key] || planByKey.get(key) || { clinicianId, weekNo, dayOfWeek };
     const updated: JobPlanWeek = { ...existing, [field]: value ?? null };
+    // If clearing a duty, also clear the supporting clinician
+    if ((field === 'amDutyId' && value === null) || (field === 'pmDutyId' && value === null)) {
+      const supportField = field === 'amDutyId' ? 'amSupportingClinicianId' : 'pmSupportingClinicianId';
+      updated[supportField] = null;
+    }
     setDirty((d) => ({ ...d, [key]: updated }));
   };
 
@@ -216,6 +236,20 @@ export const JobPlansPage: React.FC = () => {
                                         input: { fontSize: '0.75rem' }
                                       }}
                                     />
+                                    {c.role === 'registrar' && plan?.amDutyId && (
+                                      <Select
+                                        placeholder="Supporting..."
+                                        data={consultantOptions}
+                                        value={plan?.amSupportingClinicianId?.toString() ?? null}
+                                        onChange={(v) => setCell(c.id, weekNo, day.value, 'amSupportingClinicianId', v ? Number(v) : null)}
+                                        clearable
+                                        size="xs"
+                                        mt={4}
+                                        styles={{
+                                          input: { fontSize: '0.7rem', fontStyle: 'italic' }
+                                        }}
+                                      />
+                                    )}
                                   </Box>
                                   <Box>
                                     <Text size="xs" fw={500} c="orange" mb={2}>PM</Text>
@@ -230,6 +264,20 @@ export const JobPlansPage: React.FC = () => {
                                         input: { fontSize: '0.75rem' }
                                       }}
                                     />
+                                    {c.role === 'registrar' && plan?.pmDutyId && (
+                                      <Select
+                                        placeholder="Supporting..."
+                                        data={consultantOptions}
+                                        value={plan?.pmSupportingClinicianId?.toString() ?? null}
+                                        onChange={(v) => setCell(c.id, weekNo, day.value, 'pmSupportingClinicianId', v ? Number(v) : null)}
+                                        clearable
+                                        size="xs"
+                                        mt={4}
+                                        styles={{
+                                          input: { fontSize: '0.7rem', fontStyle: 'italic' }
+                                        }}
+                                      />
+                                    )}
                                   </Box>
                                 </Stack>
                               </Table.Td>

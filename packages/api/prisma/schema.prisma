@@ -74,6 +74,9 @@ model JobPlanWeek {
   amDutyId    Int?
   pmDuty      Duty?    @relation("JobPlanWeek_pmDuty", fields: [pmDutyId], references: [id])
   pmDutyId    Int?
+  // For registrars: which consultant they support for this duty (null = independent duty)
+  amSupportingClinicianId Int?
+  pmSupportingClinicianId Int?
   notes       String?
 
   @@unique([clinicianId, weekNo, dayOfWeek])

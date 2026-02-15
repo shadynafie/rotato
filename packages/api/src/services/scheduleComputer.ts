@@ -16,6 +16,8 @@ interface ScheduleEntry {
   leaveType: string | null;
   source: 'jobplan' | 'oncall' | 'leave' | 'manual';
   manualOverrideId: number | null; // RotaEntry id if manually overridden
+  supportingClinicianId: number | null;
+  supportingClinicianName: string | null;
 }
 
 function formatDateString(date: Date): string {
@@ -83,15 +85,28 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
     prisma.duty.findMany()
   ]);
 
+  // Build clinician lookup for names
+  const clinicianMap = new Map<number, { name: string; role: string }>();
+  clinicians.forEach((c) => clinicianMap.set(c.id, { name: c.name, role: c.role }));
+
   // Build lookup maps
-  const jobPlanMap = new Map<string, { amDutyId: number | null; pmDutyId: number | null; amDuty: any; pmDuty: any }>();
+  const jobPlanMap = new Map<string, {
+    amDutyId: number | null;
+    pmDutyId: number | null;
+    amDuty: any;
+    pmDuty: any;
+    amSupportingClinicianId: number | null;
+    pmSupportingClinicianId: number | null;
+  }>();
   jobPlans.forEach((jp) => {
     const key = `${jp.clinicianId}-${jp.weekNo}-${jp.dayOfWeek}`;
     jobPlanMap.set(key, {
       amDutyId: jp.amDutyId,
       pmDutyId: jp.pmDutyId,
       amDuty: jp.amDuty,
-      pmDuty: jp.pmDuty
+      pmDuty: jp.pmDuty,
+      amSupportingClinicianId: jp.amSupportingClinicianId,
+      pmSupportingClinicianId: jp.pmSupportingClinicianId
     });
   });
 
@@ -161,7 +176,9 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
             isLeave: false,
             leaveType: null,
             source: 'manual',
-            manualOverrideId: manual.id
+            manualOverrideId: manual.id,
+            supportingClinicianId: null,
+            supportingClinicianName: null
           };
         } else if (leave && (leave.session === 'FULL' || leave.session === session)) {
           // Leave
@@ -178,7 +195,9 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
             isLeave: true,
             leaveType: leave.type,
             source: 'leave',
-            manualOverrideId: null
+            manualOverrideId: null,
+            supportingClinicianId: null,
+            supportingClinicianName: null
           };
         } else if (isOncall) {
           // On-call
@@ -195,7 +214,9 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
             isLeave: false,
             leaveType: null,
             source: 'oncall',
-            manualOverrideId: null
+            manualOverrideId: null,
+            supportingClinicianId: null,
+            supportingClinicianName: null
           };
         } else if (isWeekday) {
           // Job plan (weekdays only)
@@ -203,6 +224,8 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
           const plan = jobPlanMap.get(planKey);
           const dutyId = session === 'AM' ? plan?.amDutyId : plan?.pmDutyId;
           const duty = dutyId ? dutyMap.get(dutyId) : null;
+          const supportingClinicianId = session === 'AM' ? plan?.amSupportingClinicianId : plan?.pmSupportingClinicianId;
+          const supportingClinician = supportingClinicianId ? clinicianMap.get(supportingClinicianId) : null;
 
           entry = {
             date: dateStr,
@@ -217,7 +240,9 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
             isLeave: false,
             leaveType: null,
             source: 'jobplan',
-            manualOverrideId: null
+            manualOverrideId: null,
+            supportingClinicianId: supportingClinicianId ?? null,
+            supportingClinicianName: supportingClinician?.name ?? null
           };
         } else {
           // Weekend with no on-call - empty entry
@@ -234,7 +259,9 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
             isLeave: false,
             leaveType: null,
             source: 'jobplan',
-            manualOverrideId: null
+            manualOverrideId: null,
+            supportingClinicianId: null,
+            supportingClinicianName: null
           };
         }
 
