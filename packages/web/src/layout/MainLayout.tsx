@@ -175,19 +175,19 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
   const location = useLocation();
   const { logout } = useAuth();
 
-  // Fetch pending coverage count for badge
-  const { data: pendingData } = useQuery({
-    queryKey: ['coverage-pending-count'],
+  // Fetch coverage requests - shares cache with CoveragePage for instant display
+  const { data: coverageData } = useQuery({
+    queryKey: ['coverage'],
     queryFn: async () => {
-      const res = await api.get<{ count: number }>('/api/coverage/pending-count');
+      const res = await api.get<Array<{ status: string }>>('/api/coverage');
       return res.data;
     },
-    staleTime: 60000, // Consider data fresh for 1 minute (no refetch on mount)
+    staleTime: 60000, // Consider data fresh for 1 minute
     gcTime: 300000, // Keep in cache for 5 minutes
     refetchInterval: 30000, // Background refresh every 30 seconds
-    refetchOnWindowFocus: false, // Don't refetch when switching tabs
+    refetchOnWindowFocus: false,
   });
-  const pendingCoverageCount = pendingData?.count ?? 0;
+  const pendingCoverageCount = coverageData?.filter(c => c.status === 'pending').length ?? 0;
 
   const sidebarContent = (
     <>
