@@ -18,6 +18,8 @@ interface ScheduleEntry {
   leaveType: string | null;
   source: 'jobplan' | 'oncall' | 'leave' | 'manual';
   manualOverrideId: number | null;
+  supportingClinicianId: number | null;
+  supportingClinicianName: string | null;
 }
 
 interface OncallToday {
@@ -405,6 +407,12 @@ export const CalendarPage: React.FC = () => {
     return Array.from(clinicianMap.values());
   }, [scheduleQuery.data]);
 
+  // Helper to get surname from full name
+  const getSurname = (fullName: string) => {
+    const parts = fullName.split(' ');
+    return parts.length > 1 ? parts[parts.length - 1] : fullName;
+  };
+
   // Helper to get display info for a session entry
   const getDisplayInfo = (entry: ScheduleEntry | null) => {
     if (!entry) return null;
@@ -419,8 +427,14 @@ export const CalendarPage: React.FC = () => {
       return { text: leaveLabel, color: '#ff3b30', bg: 'rgba(255, 59, 48, 0.1)' };
     }
     if (entry.dutyName) {
+      // For registrars with a supporting consultant, show "Surname Duty" format
+      let displayText = entry.dutyName;
+      if (entry.supportingClinicianName && entry.clinicianRole === 'registrar') {
+        const surname = getSurname(entry.supportingClinicianName);
+        displayText = `${surname} ${entry.dutyName}`;
+      }
       return {
-        text: entry.dutyName,
+        text: displayText,
         color: entry.dutyColor || '#0071e3',
         bg: `${entry.dutyColor || '#0071e3'}15`
       };
@@ -474,12 +488,6 @@ export const CalendarPage: React.FC = () => {
   const weekConsultants = weekScheduleData.filter((s) => s.clinicianRole === 'consultant');
   const weekRegistrars = weekScheduleData.filter((s) => s.clinicianRole === 'registrar');
 
-  // Helper to get surname from full name
-  const getSurname = (fullName: string) => {
-    const parts = fullName.split(' ');
-    return parts.length > 1 ? parts[parts.length - 1] : fullName;
-  };
-
   // Build month schedule lookup: date -> { consultantOncall, registrarOncall, onLeave }
   const monthScheduleLookup = useMemo(() => {
     const entries = monthScheduleQuery.data || [];
@@ -531,8 +539,14 @@ export const CalendarPage: React.FC = () => {
       return { text: 'Leave', color: '#ff3b30', bg: 'rgba(255, 59, 48, 0.15)', isManual: entry.source === 'manual' };
     }
     if (entry.dutyName) {
+      // For registrars with a supporting consultant, show "Surname Duty" format
+      let displayText = entry.dutyName;
+      if (entry.supportingClinicianName && entry.clinicianRole === 'registrar') {
+        const surname = getSurname(entry.supportingClinicianName);
+        displayText = `${surname} ${entry.dutyName}`;
+      }
       return {
-        text: entry.dutyName,
+        text: displayText,
         color: entry.dutyColor || '#0071e3',
         bg: `${entry.dutyColor || '#0071e3'}20`,
         isManual: entry.source === 'manual'
