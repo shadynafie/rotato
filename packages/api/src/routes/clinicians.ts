@@ -4,11 +4,14 @@ import { requireAuth } from '../utils/auth.js';
 import { logAudit } from '../utils/audit.js';
 import { z } from 'zod';
 
+// Helper to treat empty strings as undefined
+const emptyToUndefined = (val: unknown) => (val === '' ? undefined : val);
+
 const clinicianBaseSchema = z.object({
   name: z.string(),
   role: z.enum(['consultant', 'registrar']),
   grade: z.enum(['junior', 'senior']).nullable().optional(),
-  email: z.string().email().optional(),
+  email: z.preprocess(emptyToUndefined, z.string().email().optional()),
   notifyEmail: z.boolean().optional(),
   notifyWhatsapp: z.boolean().optional(),
   active: z.boolean().optional()
