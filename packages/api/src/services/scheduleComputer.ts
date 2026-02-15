@@ -66,7 +66,7 @@ function computeOncallClinicianId(
 
 export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEntry[]> {
   // Fetch all required data
-  const [clinicians, jobPlans, oncallCycles, leaves, manualOverrides, duties] = await Promise.all([
+  const [clinicians, jobPlans, oncallCycles, leaves, manualOverrides, duties, coverageAssignments] = await Promise.all([
     prisma.clinician.findMany({ where: { active: true } }),
     prisma.jobPlanWeek.findMany({ include: { amDuty: true, pmDuty: true } }),
     prisma.oncallCycle.findMany(),
@@ -82,7 +82,16 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
       },
       include: { duty: true }
     }),
-    prisma.duty.findMany()
+    prisma.duty.findMany(),
+    // Fetch coverage assignments for registrars
+    prisma.coverageRequest.findMany({
+      where: {
+        date: { gte: from, lte: to },
+        status: 'assigned',
+        assignedRegistrarId: { not: null }
+      },
+      include: { duty: true, consultant: true }
+    })
   ]);
 
   // Build clinician lookup for names
@@ -132,6 +141,26 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
   const dutyMap = new Map<number, { name: string; color: string | null }>();
   duties.forEach((d) => dutyMap.set(d.id, { name: d.name, color: d.color }));
 
+  // Coverage assignment lookup: registrarId-date-session -> coverage info
+  const coverageMap = new Map<string, {
+    dutyId: number;
+    dutyName: string;
+    dutyColor: string | null;
+    consultantId: number;
+    consultantName: string;
+  }>();
+  coverageAssignments.forEach((c) => {
+    const dateStr = formatDateString(new Date(c.date));
+    const key = `${c.assignedRegistrarId}-${dateStr}-${c.session}`;
+    coverageMap.set(key, {
+      dutyId: c.dutyId,
+      dutyName: c.duty.name,
+      dutyColor: c.duty.color,
+      consultantId: c.consultantId,
+      consultantName: c.consultant.name
+    });
+  });
+
   const result: ScheduleEntry[] = [];
 
   for (const date of dateRange(from, to)) {
@@ -156,8 +185,10 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
       for (const session of sessions) {
         const manualKey = `${clinician.id}-${dateStr}-${session}`;
         const manual = manualMap.get(manualKey);
+        const coverageKey = `${clinician.id}-${dateStr}-${session}`;
+        const coverage = coverageMap.get(coverageKey);
 
-        // Priority: Manual override > Leave > On-call > Job plan
+        // Priority: Manual override > Leave > Coverage assignment > On-call > Job plan
         let entry: ScheduleEntry;
 
         if (manual) {
@@ -198,6 +229,25 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
             manualOverrideId: null,
             supportingClinicianId: null,
             supportingClinicianName: null
+          };
+        } else if (coverage) {
+          // Coverage assignment - registrar covering for a consultant
+          entry = {
+            date: dateStr,
+            clinicianId: clinician.id,
+            clinicianName: clinician.name,
+            clinicianRole: clinician.role as 'consultant' | 'registrar',
+            session,
+            dutyId: coverage.dutyId,
+            dutyName: coverage.dutyName,
+            dutyColor: coverage.dutyColor,
+            isOncall: false,
+            isLeave: false,
+            leaveType: null,
+            source: 'manual', // Show as manual since it's an explicit assignment
+            manualOverrideId: null,
+            supportingClinicianId: coverage.consultantId,
+            supportingClinicianName: coverage.consultantName
           };
         } else if (isOncall) {
           // On-call
