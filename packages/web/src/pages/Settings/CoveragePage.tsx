@@ -3,6 +3,7 @@ import { notifications } from '@mantine/notifications';
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { formatDateWithWeekday } from '../../utils/formatters';
 
 type Clinician = {
   id: number;
@@ -52,15 +53,6 @@ const fetchSuggestions = async (requestId: number) => {
   const res = await api.get<{ suggestions: SuggestedRegistrar[] }>(`/api/coverage/${requestId}/suggestions`);
   return res.data.suggestions;
 };
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
 
 const reasonLabels: Record<string, string> = {
   leave: 'Leave',
@@ -316,7 +308,7 @@ export const CoveragePage: React.FC = () => {
                   }}
                 >
                   <Table.Td>
-                    <Text fw={500} c="#1d1d1f">{formatDate(r.date)}</Text>
+                    <Text fw={500} c="#1d1d1f">{formatDateWithWeekday(r.date)}</Text>
                   </Table.Td>
                   <Table.Td>
                     <Badge variant="light" color="blue" radius="md">
@@ -446,7 +438,7 @@ export const CoveragePage: React.FC = () => {
               <Text size="sm" c="dimmed">Activity Details</Text>
               <Text fw={500}>{selectedRequest.duty.name}</Text>
               <Text size="sm" c="dimmed" mt={4}>
-                {formatDate(selectedRequest.date)} - {selectedRequest.session}
+                {formatDateWithWeekday(selectedRequest.date)} - {selectedRequest.session}
               </Text>
               <Text size="sm" c="dimmed">
                 Covering for: {selectedRequest.consultant.name}
@@ -514,7 +506,7 @@ export const CoveragePage: React.FC = () => {
                           </Text>
                           {suggestion.lastAssignedDate && (
                             <Text size="xs" c="dimmed">
-                              Last assigned: {formatDate(suggestion.lastAssignedDate)}
+                              Last assigned: {formatDateWithWeekday(suggestion.lastAssignedDate)}
                             </Text>
                           )}
                         </Group>

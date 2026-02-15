@@ -5,6 +5,8 @@ import { notifications } from '@mantine/notifications';
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { formatDateWithWeekday } from '../../utils/formatters';
+import { LEAVE_TYPES, SESSIONS } from '../../utils/constants';
 
 interface Clinician {
   id: number;
@@ -22,19 +24,6 @@ interface Leave {
   clinician: Clinician;
 }
 
-const LEAVE_TYPES = [
-  { value: 'annual', label: 'Annual Leave' },
-  { value: 'study', label: 'Study Leave' },
-  { value: 'sick', label: 'Sick Leave' },
-  { value: 'professional', label: 'Professional Leave' },
-];
-
-const SESSIONS = [
-  { value: 'FULL', label: 'Full Day' },
-  { value: 'AM', label: 'Morning (AM)' },
-  { value: 'PM', label: 'Afternoon (PM)' },
-];
-
 const fetchLeaves = async () => {
   const res = await api.get<Leave[]>('/api/leaves');
   return res.data;
@@ -44,16 +33,6 @@ const fetchClinicians = async () => {
   const res = await api.get<Clinician[]>('/api/clinicians');
   return res.data;
 };
-
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
 
 function getLeaveTypeColor(type: string): string {
   switch (type) {
@@ -157,7 +136,7 @@ export const LeavesPage: React.FC = () => {
       title: 'Delete Leave',
       children: (
         <Text size="sm">
-          Are you sure you want to delete the leave for <strong>{leave.clinician.name}</strong> on {formatDate(leave.date)}?
+          Are you sure you want to delete the leave for <strong>{leave.clinician.name}</strong> on {formatDateWithWeekday(leave.date)}?
         </Text>
       ),
       labels: { confirm: 'Delete', cancel: 'Cancel' },
@@ -298,7 +277,7 @@ export const LeavesPage: React.FC = () => {
               {upcomingLeaves.map((leave) => (
                 <Table.Tr key={leave.id}>
                   <Table.Td>
-                    <Text fw={500} c="#1d1d1f">{formatDate(leave.date)}</Text>
+                    <Text fw={500} c="#1d1d1f">{formatDateWithWeekday(leave.date)}</Text>
                   </Table.Td>
                   <Table.Td>
                     <Text>{leave.clinician.name}</Text>
@@ -380,7 +359,7 @@ export const LeavesPage: React.FC = () => {
               {pastLeaves.map((leave) => (
                 <Table.Tr key={leave.id} style={{ opacity: 0.6 }}>
                   <Table.Td>
-                    <Text fw={500} c="#1d1d1f">{formatDate(leave.date)}</Text>
+                    <Text fw={500} c="#1d1d1f">{formatDateWithWeekday(leave.date)}</Text>
                   </Table.Td>
                   <Table.Td>
                     <Text>{leave.clinician.name}</Text>

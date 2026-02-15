@@ -1,7 +1,9 @@
-import { Box, Burger, Button, Divider, Group, Text, Transition, UnstyledButton } from '@mantine/core';
+import { Badge, Box, Burger, Button, Divider, Group, Text, Transition, UnstyledButton } from '@mantine/core';
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
+import api from '../api/client';
 
 const navItems = [
   {
@@ -125,9 +127,10 @@ interface NavItemProps {
   icon: React.ReactNode;
   active: boolean;
   onClick?: () => void;
+  badge?: number;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ label, to, icon, active, onClick }) => (
+const NavItem: React.FC<NavItemProps> = ({ label, to, icon, active, onClick, badge }) => (
   <UnstyledButton
     component={Link}
     to={to}
@@ -158,7 +161,12 @@ const NavItem: React.FC<NavItemProps> = ({ label, to, icon, active, onClick }) =
     }}
   >
     <span style={{ opacity: active ? 1 : 0.7, display: 'flex', alignItems: 'center' }}>{icon}</span>
-    {label}
+    <span style={{ flex: 1 }}>{label}</span>
+    {badge !== undefined && badge > 0 && (
+      <Badge size="sm" variant="filled" color="red" radius="xl">
+        {badge} pending
+      </Badge>
+    )}
   </UnstyledButton>
 );
 
@@ -166,6 +174,17 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const { logout } = useAuth();
+
+  // Fetch pending coverage count for badge
+  const { data: pendingData } = useQuery({
+    queryKey: ['coverage-pending-count'],
+    queryFn: async () => {
+      const res = await api.get<{ count: number }>('/api/coverage/pending-count');
+      return res.data;
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+  const pendingCoverageCount = pendingData?.count ?? 0;
 
   const sidebarContent = (
     <>
@@ -213,6 +232,7 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }
             {...item}
             active={location.pathname === item.to}
             onClick={() => setMobileOpen(false)}
+            badge={item.to === '/settings/coverage' ? pendingCoverageCount : undefined}
           />
         ))}
       </Box>

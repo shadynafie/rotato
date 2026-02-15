@@ -4,6 +4,7 @@ import { notifications } from '@mantine/notifications';
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { formatDateShort } from '../../utils/formatters';
 
 type User = {
   id: number;
@@ -16,14 +17,6 @@ const fetchUsers = async () => {
   const res = await api.get<User[]>('/api/users');
   return res.data;
 };
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
 
 export const UsersPage: React.FC = () => {
   const qc = useQueryClient();
@@ -225,7 +218,7 @@ export const UsersPage: React.FC = () => {
                     </Group>
                   </Table.Td>
                   <Table.Td>
-                    <Text c="dimmed" size="sm">{formatDate(user.createdAt)}</Text>
+                    <Text c="dimmed" size="sm">{formatDateShort(user.createdAt)}</Text>
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs">

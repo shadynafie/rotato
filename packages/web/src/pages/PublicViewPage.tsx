@@ -3,6 +3,8 @@ import React, { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
+import { formatLeaveLabel, formatDateLong } from '../utils/formatters';
+import { COLORS } from '../utils/constants';
 
 interface ScheduleEntry {
   date: string;
@@ -37,16 +39,6 @@ function getDateString(date: Date): string {
 
 function getTodayString(): string {
   return getDateString(new Date());
-}
-
-function formatDisplayDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-GB', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
-  });
 }
 
 function addDays(dateStr: string, days: number): string {
@@ -327,29 +319,20 @@ export const PublicViewPage: React.FC = () => {
     return dateMap;
   }, [monthScheduleQuery.data]);
 
-  // Helper to get surname from full name
-  const getSurname = (fullName: string) => {
-    const parts = fullName.split(' ');
-    return parts.length > 1 ? parts[parts.length - 1] : fullName;
-  };
-
   const getDisplayInfo = (entry: ScheduleEntry | null) => {
     if (!entry) return null;
 
     if (entry.isOncall) {
-      return { text: 'On-call', color: '#ff9500', bg: 'rgba(255, 149, 0, 0.1)' };
+      return { text: 'On-call', color: COLORS.oncall, bg: COLORS.oncallBg };
     }
     if (entry.isLeave) {
-      const leaveLabel = entry.leaveType
-        ? entry.leaveType.charAt(0).toUpperCase() + entry.leaveType.slice(1) + ' Leave'
-        : 'Leave';
-      return { text: leaveLabel, color: '#ff3b30', bg: 'rgba(255, 59, 48, 0.1)' };
+      return { text: formatLeaveLabel(entry.leaveType), color: COLORS.leave, bg: COLORS.leaveBg };
     }
     if (entry.dutyName) {
       return {
         text: entry.dutyName,
-        color: entry.dutyColor || '#0071e3',
-        bg: `${entry.dutyColor || '#0071e3'}15`
+        color: entry.dutyColor || COLORS.primary,
+        bg: `${entry.dutyColor || COLORS.primary}15`
       };
     }
     return null;
@@ -358,16 +341,16 @@ export const PublicViewPage: React.FC = () => {
   const getCompactDisplay = (entry: ScheduleEntry | null) => {
     if (!entry) return null;
     if (entry.isOncall) {
-      return { text: 'On-call', color: '#ff9500', bg: 'rgba(255, 149, 0, 0.15)' };
+      return { text: 'On-call', color: COLORS.oncall, bg: 'rgba(255, 149, 0, 0.15)' };
     }
     if (entry.isLeave) {
-      return { text: 'Leave', color: '#ff3b30', bg: 'rgba(255, 59, 48, 0.15)' };
+      return { text: 'Leave', color: COLORS.leave, bg: 'rgba(255, 59, 48, 0.15)' };
     }
     if (entry.dutyName) {
       return {
         text: entry.dutyName,
-        color: entry.dutyColor || '#0071e3',
-        bg: `${entry.dutyColor || '#0071e3'}20`
+        color: entry.dutyColor || COLORS.primary,
+        bg: `${entry.dutyColor || COLORS.primary}20`
       };
     }
     return null;
@@ -479,7 +462,7 @@ export const PublicViewPage: React.FC = () => {
               marginBottom: 8,
             }}
           >
-            {view === 'today' && formatDisplayDate(selectedDate)}
+            {view === 'today' && formatDateLong(selectedDate)}
             {view === 'week' && formatWeekRange(weekStart, weekEnd)}
             {view === 'month' && formatMonthYear(selectedDate)}
           </Text>

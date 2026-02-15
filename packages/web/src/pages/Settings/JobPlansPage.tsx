@@ -3,6 +3,7 @@ import { notifications } from '@mantine/notifications';
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { getSurname } from '../../utils/formatters';
 
 type Clinician = { id: number; name: string; role: 'consultant' | 'registrar' };
 type Duty = { id: number; name: string };
@@ -57,12 +58,6 @@ export const JobPlansPage: React.FC = () => {
     data?.jobPlans.forEach((p) => map.set(`${p.clinicianId}-${p.weekNo}-${p.dayOfWeek}`, p));
     return map;
   }, [data?.jobPlans]);
-
-  // Extract surname from full name (last word)
-  const getSurname = (fullName: string) => {
-    const parts = fullName.trim().split(/\s+/);
-    return parts[parts.length - 1];
-  };
 
   // Get consultant options for a specific slot (only those with the SAME duty as the registrar)
   const getConsultantOptionsForSlot = (weekNo: number, dayOfWeek: number, session: 'AM' | 'PM', registrarDutyId: number | null | undefined) => {

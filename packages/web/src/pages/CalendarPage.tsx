@@ -3,6 +3,8 @@ import { DatePicker } from '@mantine/dates';
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
+import { getSurname, formatLeaveLabel, formatDutyDisplay, formatDateLong } from '../utils/formatters';
+import { COLORS } from '../utils/constants';
 
 interface ScheduleEntry {
   date: string;
@@ -51,16 +53,6 @@ function getDateString(date: Date) {
 
 function getTodayString() {
   return getDateString(new Date());
-}
-
-function formatDisplayDate(dateStr: string) {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-GB', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
-  });
 }
 
 function addDays(dateStr: string, days: number): string {
@@ -407,36 +399,22 @@ export const CalendarPage: React.FC = () => {
     return Array.from(clinicianMap.values());
   }, [scheduleQuery.data]);
 
-  // Helper to get surname from full name
-  const getSurname = (fullName: string) => {
-    const parts = fullName.split(' ');
-    return parts.length > 1 ? parts[parts.length - 1] : fullName;
-  };
-
   // Helper to get display info for a session entry
   const getDisplayInfo = (entry: ScheduleEntry | null) => {
     if (!entry) return null;
 
     if (entry.isOncall) {
-      return { text: 'On-call', color: '#ff9500', bg: 'rgba(255, 149, 0, 0.1)' };
+      return { text: 'On-call', color: COLORS.oncall, bg: COLORS.oncallBg };
     }
     if (entry.isLeave) {
-      const leaveLabel = entry.leaveType
-        ? entry.leaveType.charAt(0).toUpperCase() + entry.leaveType.slice(1) + ' Leave'
-        : 'Leave';
-      return { text: leaveLabel, color: '#ff3b30', bg: 'rgba(255, 59, 48, 0.1)' };
+      return { text: formatLeaveLabel(entry.leaveType), color: COLORS.leave, bg: COLORS.leaveBg };
     }
     if (entry.dutyName) {
-      // For registrars with a supporting consultant, show "Surname Duty" format
-      let displayText = entry.dutyName;
-      if (entry.supportingClinicianName && entry.clinicianRole === 'registrar') {
-        const surname = getSurname(entry.supportingClinicianName);
-        displayText = `${surname} ${entry.dutyName}`;
-      }
+      const displayText = formatDutyDisplay(entry.dutyName, entry.supportingClinicianName, entry.clinicianRole === 'registrar');
       return {
         text: displayText,
-        color: entry.dutyColor || '#0071e3',
-        bg: `${entry.dutyColor || '#0071e3'}15`
+        color: entry.dutyColor || COLORS.primary,
+        bg: `${entry.dutyColor || COLORS.primary}15`
       };
     }
     return null;
@@ -533,22 +511,17 @@ export const CalendarPage: React.FC = () => {
     if (!entry) return null;
 
     if (entry.isOncall) {
-      return { text: 'On-call', color: '#ff9500', bg: 'rgba(255, 149, 0, 0.15)', isManual: entry.source === 'manual' };
+      return { text: 'On-call', color: COLORS.oncall, bg: 'rgba(255, 149, 0, 0.15)', isManual: entry.source === 'manual' };
     }
     if (entry.isLeave) {
-      return { text: 'Leave', color: '#ff3b30', bg: 'rgba(255, 59, 48, 0.15)', isManual: entry.source === 'manual' };
+      return { text: 'Leave', color: COLORS.leave, bg: 'rgba(255, 59, 48, 0.15)', isManual: entry.source === 'manual' };
     }
     if (entry.dutyName) {
-      // For registrars with a supporting consultant, show "Surname Duty" format
-      let displayText = entry.dutyName;
-      if (entry.supportingClinicianName && entry.clinicianRole === 'registrar') {
-        const surname = getSurname(entry.supportingClinicianName);
-        displayText = `${surname} ${entry.dutyName}`;
-      }
+      const displayText = formatDutyDisplay(entry.dutyName, entry.supportingClinicianName, entry.clinicianRole === 'registrar');
       return {
         text: displayText,
-        color: entry.dutyColor || '#0071e3',
-        bg: `${entry.dutyColor || '#0071e3'}20`,
+        color: entry.dutyColor || COLORS.primary,
+        bg: `${entry.dutyColor || COLORS.primary}20`,
         isManual: entry.source === 'manual'
       };
     }
@@ -569,7 +542,7 @@ export const CalendarPage: React.FC = () => {
                 letterSpacing: '-0.025em',
               }}
             >
-              {view === 'month' ? formatMonthDisplay(selectedDate) : view === 'week' ? formatWeekRange(weekStart) : formatDisplayDate(selectedDate)}
+              {view === 'month' ? formatMonthDisplay(selectedDate) : view === 'week' ? formatWeekRange(weekStart) : formatDateLong(selectedDate)}
             </Text>
             {view === 'today' && isToday(selectedDate) && (
               <Badge color="blue" variant="filled" size="lg" radius="md">Today</Badge>
@@ -1486,7 +1459,7 @@ export const CalendarPage: React.FC = () => {
               <Text size="sm" c="dimmed">Clinician</Text>
               <Text fw={500}>{editingCell.clinicianName}</Text>
               <Text size="sm" c="dimmed" mt={8}>Date</Text>
-              <Text fw={500}>{formatDisplayDate(editingCell.date)}</Text>
+              <Text fw={500}>{formatDateLong(editingCell.date)}</Text>
               <Text size="sm" c="dimmed" mt={8}>Session</Text>
               <Text fw={500}>{editingCell.session}</Text>
             </Box>

@@ -39,6 +39,8 @@ npm run lint
 - **React + Vite + TypeScript**, Mantine UI, React Query
 - `src/api/client.ts` - Axios with JWT header injection
 - `src/context/AuthContext.tsx` - Auth state management
+- `src/utils/formatters.ts` - Shared formatting utilities (see below)
+- `src/utils/constants.ts` - Shared constants (LEAVE_TYPES, SESSIONS, COLORS)
 
 ### Rota Generation Logic
 1. Job plans define Week 1-5 templates per clinician (AM/PM duties)
@@ -69,6 +71,27 @@ CORS_ORIGIN=http://localhost:5173
 ```
 
 Default login: `admin@example.com` / `admin123`
+
+## Shared Utilities (Single Source of Truth)
+
+### Formatting Functions (`packages/web/src/utils/formatters.ts`)
+Use these instead of inline implementations:
+- `getSurname(fullName)` - Extract surname: "John Smith" → "Smith"
+- `formatLeaveLabel(leaveType)` - Format leave: "annual" → "Annual Leave"
+- `formatDutyDisplay(dutyName, supportingClinicianName, isRegistrar)` - For registrars: "Smith Clinic"
+- `formatDateShort(dateStr)` - "15 Feb 2026"
+- `formatDateWithWeekday(dateStr)` - "Sat, 15 Feb 2026"
+- `formatDateLong(dateStr)` - "Saturday, 15 February 2026"
+
+### Constants (`packages/web/src/utils/constants.ts`)
+- `LEAVE_TYPES` - Options for leave type selects
+- `SESSIONS` - Options for session selects (FULL, AM, PM)
+- `COLORS` - Semantic colors (primary, oncall, leave, etc.)
+
+### API Formatters (`packages/api/src/utils/formatters.ts`)
+Backend versions of `getSurname`, `formatLeaveLabel`, `formatDutyDisplay` for iCal generation.
+
+**Important**: When displaying registrar duties with a supporting consultant, always use the "Surname Duty" format (e.g., "Smith Clinic"). Use `formatDutyDisplay()` for consistency.
 
 ## Conventions
 

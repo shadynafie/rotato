@@ -3,6 +3,7 @@ import { prisma } from '../prisma.js';
 import { computeSchedule } from '../services/scheduleComputer.js';
 import { z } from 'zod';
 import ics from 'ics';
+import { formatLeaveLabel, formatDutyDisplay } from '../utils/formatters.js';
 
 async function validateToken(token: string) {
   const record = await prisma.shareToken.findUnique({ where: { token, active: true } });
@@ -114,21 +115,13 @@ export async function publicRoutes(app: FastifyInstance) {
       // Determine title
       let title: string;
       if (entry.isLeave) {
-        const leaveLabel = entry.leaveType
-          ? entry.leaveType.charAt(0).toUpperCase() + entry.leaveType.slice(1) + ' Leave'
-          : 'Leave';
+        const leaveLabel = formatLeaveLabel(entry.leaveType);
         title = clinicianId ? leaveLabel : `${entry.clinicianName} - ${leaveLabel}`;
       } else if (entry.isOncall) {
         title = clinicianId ? 'On-call' : `${entry.clinicianName} - On-call`;
       } else {
         // For duties, show supporting consultant surname if present (e.g., "Nafie Clinic")
-        let dutyLabel = entry.dutyName || 'Duty';
-        if (entry.supportingClinicianName) {
-          // Extract surname (last word of name)
-          const nameParts = entry.supportingClinicianName.trim().split(/\s+/);
-          const surname = nameParts[nameParts.length - 1];
-          dutyLabel = `${surname} ${dutyLabel}`;
-        }
+        const dutyLabel = formatDutyDisplay(entry.dutyName || 'Duty', entry.supportingClinicianName);
         title = clinicianId ? dutyLabel : `${entry.clinicianName} - ${dutyLabel}`;
       }
 
