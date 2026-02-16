@@ -143,10 +143,13 @@ export async function generateRota(from: Date, to: Date) {
     assignments: registrarAssignments
   };
 
-  // Check if slot-based system is set up (has slots and assignments)
-  const useSlotBasedSystem = consultantSlots.length > 0 || registrarSlots.length > 0;
+  // Check if slot-based system is set up PER ROLE
+  // Consultants: use slot-based if consultant slots exist (implicit pattern: week N = slot N)
+  // Registrars: use slot-based only if registrar slots AND patterns exist (explicit pattern required)
+  const useSlotBasedConsultants = consultantSlots.length > 0 && consultantConfig !== null;
+  const useSlotBasedRegistrars = registrarSlots.length > 0 && registrarPatterns.length > 0 && registrarConfig !== null;
 
-  // DEPRECATED: Old system fallback
+  // DEPRECATED: Old system fallback (used when slot-based not configured for a role)
   const cycles = await prisma.oncallCycle.findMany();
   const consultantCycle = cycles.filter((c) => c.role === 'consultant');
   const registrarCycle = cycles.filter((c) => c.role === 'registrar');
@@ -161,21 +164,24 @@ export async function generateRota(from: Date, to: Date) {
       const leave = leaves.find((l) => l.clinicianId === clinician.id);
       const sessions: Session[] = ['AM', 'PM'];
 
-      // Determine on-call clinician using slot-based or old system
+      // Determine on-call clinician using slot-based or old system (per-role decision)
       let oncallClinicianId: number | null;
-      if (useSlotBasedSystem) {
+      const isConsultant = clinician.role === 'consultant';
+      const useSlotBased = isConsultant ? useSlotBasedConsultants : useSlotBasedRegistrars;
+
+      if (useSlotBased) {
         // NEW: Use slot-based system
         oncallClinicianId = pickOncallClinicianSlotBased(
           date,
           clinician.role as 'consultant' | 'registrar',
-          clinician.role === 'consultant' ? consultantData : registrarData
+          isConsultant ? consultantData : registrarData
         );
       } else {
         // DEPRECATED: Fall back to old system
         oncallClinicianId = pickOncallSlot(
           date,
           clinician.role as 'consultant' | 'registrar',
-          clinician.role === 'consultant' ? consultantCycle : registrarCycle
+          isConsultant ? consultantCycle : registrarCycle
         );
       }
 
