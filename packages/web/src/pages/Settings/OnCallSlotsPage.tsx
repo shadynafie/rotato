@@ -1,4 +1,5 @@
 import {
+  Alert,
   Badge,
   Box,
   Button,
@@ -104,6 +105,22 @@ export const OnCallSlotsPage: React.FC = () => {
   const [assignModalClinicianId, setAssignModalClinicianId] = useState<string | null>(null);
   const [assignModalEffectiveDate, setAssignModalEffectiveDate] = useState(() => {
     return new Date().toISOString().slice(0, 10);
+  });
+
+  // Start date warning modal state
+  const [startDateWarningOpen, setStartDateWarningOpen] = useState(false);
+  const [pendingStartDateChange, setPendingStartDateChange] = useState<{ role: 'consultant' | 'registrar'; newDate: string } | null>(null);
+
+  // Update calendar modal state
+  const [updateCalendarModalOpen, setUpdateCalendarModalOpen] = useState(false);
+  const [updateFromDate, setUpdateFromDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().slice(0, 10);
+  });
+  const [updateToDate, setUpdateToDate] = useState(() => {
+    const threeMonths = new Date();
+    threeMonths.setMonth(threeMonths.getMonth() + 3);
+    return threeMonths.toISOString().slice(0, 10);
   });
 
   // Initialize state from fetched data
@@ -277,6 +294,32 @@ export const OnCallSlotsPage: React.FC = () => {
     },
   });
 
+  // Regenerate rota mutation
+  const regenerateRotaMutation = useMutation({
+    mutationFn: async (params: { from: string; to: string }) => {
+      return api.post('/api/rota/generate', {
+        from: params.from,
+        to: params.to,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['rota'] });
+      setUpdateCalendarModalOpen(false);
+      notifications.show({
+        title: 'Calendar Updated',
+        message: 'On-call assignments have been regenerated for the selected date range',
+        color: 'green',
+      });
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error?.response?.data?.message || 'Failed to regenerate rota',
+        color: 'red',
+      });
+    },
+  });
+
   // Open assignment modal for a slot
   const openAssignModal = (slot: OnCallSlot) => {
     setAssignModalSlot(slot);
@@ -316,7 +359,22 @@ export const OnCallSlotsPage: React.FC = () => {
 
   // Save config (only start date - cycle length is auto-calculated from slot count)
   const saveConfig = (role: 'consultant' | 'registrar') => {
-    const startDate = role === 'consultant' ? consStartDate : regStartDate;
+    const newDate = role === 'consultant' ? consStartDate : regStartDate;
+    const existingConfig = role === 'consultant' ? data?.config.consultant : data?.config.registrar;
+
+    // If there's an existing start date that differs, show warning
+    if (existingConfig && existingConfig.startDate.slice(0, 10) !== newDate) {
+      setPendingStartDateChange({ role, newDate });
+      setStartDateWarningOpen(true);
+      return;
+    }
+
+    // Otherwise, save directly
+    doSaveConfig(role, newDate);
+  };
+
+  // Actually save the config
+  const doSaveConfig = (role: 'consultant' | 'registrar', startDate: string) => {
     saveConfigMutation.mutate(
       { role, startDate },
       {
@@ -329,6 +387,15 @@ export const OnCallSlotsPage: React.FC = () => {
         },
       }
     );
+  };
+
+  // Confirm start date change (from warning modal)
+  const confirmStartDateChange = () => {
+    if (pendingStartDateChange) {
+      doSaveConfig(pendingStartDateChange.role, pendingStartDateChange.newDate);
+      setStartDateWarningOpen(false);
+      setPendingStartDateChange(null);
+    }
   };
 
   // Render slot card
@@ -942,6 +1009,18 @@ export const OnCallSlotsPage: React.FC = () => {
             Configure on-call rotation slots and assign clinicians
           </Text>
         </Box>
+        <Button
+          size="md"
+          leftSection={
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+          }
+          onClick={() => setUpdateCalendarModalOpen(true)}
+        >
+          Update Calendar
+        </Button>
       </Group>
 
       {/* Loading State */}
@@ -984,6 +1063,143 @@ export const OnCallSlotsPage: React.FC = () => {
           {renderAssignmentModal()}
         </>
       )}
+
+      {/* Start Date Warning Modal */}
+      <Modal
+        opened={startDateWarningOpen}
+        onClose={() => {
+          setStartDateWarningOpen(false);
+          setPendingStartDateChange(null);
+        }}
+        title={
+          <Group gap="sm">
+            <Box
+              style={{
+                width: 32,
+                height: 32,
+                backgroundColor: 'rgba(255, 149, 0, 0.1)',
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ff9500" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </Box>
+            <Text fw={600}>Change Start Date?</Text>
+          </Group>
+        }
+        size="md"
+      >
+        <Stack gap="lg">
+          <Alert color="orange" variant="light">
+            <Text size="sm">
+              Changing the cycle start date will affect all on-call calculations.
+              This may cause on-call assignments to shift to different dates.
+            </Text>
+          </Alert>
+          <Text size="sm" c="dimmed">
+            After changing the start date, you will need to click "Update Calendar" to regenerate
+            the rota entries with the new calculations.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="default"
+              onClick={() => {
+                setStartDateWarningOpen(false);
+                setPendingStartDateChange(null);
+                // Reset the date input to the original value
+                if (pendingStartDateChange?.role === 'consultant' && data?.config.consultant) {
+                  setConsStartDate(data.config.consultant.startDate.slice(0, 10));
+                } else if (pendingStartDateChange?.role === 'registrar' && data?.config.registrar) {
+                  setRegStartDate(data.config.registrar.startDate.slice(0, 10));
+                }
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="orange"
+              onClick={confirmStartDateChange}
+              loading={saveConfigMutation.isPending}
+            >
+              Change Start Date
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Update Calendar Modal */}
+      <Modal
+        opened={updateCalendarModalOpen}
+        onClose={() => setUpdateCalendarModalOpen(false)}
+        title={
+          <Group gap="sm">
+            <Box
+              style={{
+                width: 32,
+                height: 32,
+                backgroundColor: 'rgba(0, 113, 227, 0.1)',
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0071e3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10" />
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+              </svg>
+            </Box>
+            <Text fw={600}>Update Calendar</Text>
+          </Group>
+        }
+        size="md"
+      >
+        <Stack gap="lg">
+          <Text size="sm" c="dimmed">
+            Regenerate the rota for the selected date range. This will update on-call assignments
+            based on your current slot configuration and assignments.
+          </Text>
+          <Alert color="blue" variant="light">
+            <Text size="sm" fw={500} mb={4}>Priority Order:</Text>
+            <Text size="sm">
+              1. <strong>Manual edits & Leave</strong> — Never overwritten<br />
+              2. <strong>On-call</strong> — Override job plans<br />
+              3. <strong>Job Plans</strong> — Base schedule
+            </Text>
+          </Alert>
+          <Group grow>
+            <TextInput
+              label="From"
+              type="date"
+              value={updateFromDate}
+              onChange={(e) => setUpdateFromDate(e.currentTarget.value)}
+            />
+            <TextInput
+              label="To"
+              type="date"
+              value={updateToDate}
+              onChange={(e) => setUpdateToDate(e.currentTarget.value)}
+            />
+          </Group>
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={() => setUpdateCalendarModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => regenerateRotaMutation.mutate({ from: updateFromDate, to: updateToDate })}
+              loading={regenerateRotaMutation.isPending}
+            >
+              Update Calendar
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Box>
   );
 };
