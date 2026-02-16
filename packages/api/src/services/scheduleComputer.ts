@@ -1,5 +1,6 @@
 import { prisma } from '../prisma.js';
 import type { OnCallConfig, OnCallSlot, OnCallPattern, SlotAssignment } from '@prisma/client';
+import { formatDateString, dateRange, weekOfMonth, getDayOfWeek } from '../utils/dateHelpers.js';
 
 type Session = 'AM' | 'PM';
 
@@ -31,34 +32,6 @@ interface SlotBasedData {
   assignments: SlotAssignment[];
 }
 
-function formatDateString(date: Date): string {
-  const yyyy = date.getFullYear();
-  const mm = `${date.getMonth() + 1}`.padStart(2, '0');
-  const dd = `${date.getDate()}`.padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function* dateRange(start: Date, end: Date) {
-  const current = new Date(start);
-  while (current <= end) {
-    yield new Date(current);
-    current.setDate(current.getDate() + 1);
-  }
-}
-
-function weekOfMonth(date: Date): number {
-  const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
-  const dayOfMonth = date.getDate();
-  const adjusted = dayOfMonth + firstDay.getDay();
-  return Math.ceil(adjusted / 7);
-}
-
-// Get day of week: 1=Monday, 2=Tuesday, ..., 5=Friday, 6=Saturday, 7=Sunday
-function getDayOfWeek(date: Date): number {
-  const jsDay = date.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
-  return jsDay === 0 ? 7 : jsDay;
-}
-
 // Slot-based on-call clinician picker
 function computeOncallClinicianSlotBased(
   date: Date,
@@ -86,11 +59,6 @@ function computeOncallClinicianSlotBased(
     const weekOfCycle = ((weeksSinceStart % config.cycleLength) + config.cycleLength) % config.cycleLength;
     const position = weekOfCycle + 1; // 1-indexed
     const slot = slots.find(s => s.position === position);
-
-    // Debug log for first request of each day
-    if (new Date(dateStr).getDate() <= 3) {
-      console.log(`[Consultant OnCall] Date ${dateStr}: daysSinceStart=${daysSinceStart}, weeksSinceStart=${weeksSinceStart}, weekOfCycle=${weekOfCycle}, position=${position}, slotId=${slot?.id ?? 'NOT FOUND'}`);
-    }
 
     if (!slot) return null;
     slotId = slot.id;
@@ -121,11 +89,6 @@ function computeOncallClinicianSlotBased(
 
     return fromStr <= dateStr && toStr >= dateStr;
   });
-
-  // Debug log for first few days
-  if (role === 'consultant' && new Date(dateStr).getDate() <= 3) {
-    console.log(`[Consultant OnCall] Date ${dateStr}: slotId=${slotId}, assignment=${assignment ? `clinicianId=${assignment.clinicianId}` : 'NONE'}`);
-  }
 
   return assignment?.clinicianId ?? null;
 }
@@ -206,18 +169,6 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
     patterns: oncallPatterns,
     assignments: registrarAssignments
   };
-
-  // Debug logging for consultant on-call
-  console.log('=== SCHEDULE COMPUTER DEBUG ===');
-  console.log('Consultant setup:');
-  console.log('  - Config:', consultantConfig ? `cycleLength=${consultantConfig.cycleLength}, startDate=${formatDateString(consultantConfig.startDate)}` : 'NOT SET');
-  console.log('  - Slots:', consultantSlots.length, consultantSlots.map(s => `Slot ${s.position} (id=${s.id})`).join(', '));
-  console.log('  - Assignments:', consultantAssignments.length);
-  consultantAssignments.forEach(a => {
-    const slot = consultantSlots.find(s => s.id === a.slotId);
-    console.log(`    - Slot ${slot?.position} (id=${a.slotId}) -> Clinician ${a.clinicianId} (from ${formatDateString(a.effectiveFrom)} to ${a.effectiveTo ? formatDateString(a.effectiveTo) : 'ongoing'})`);
-  });
-  console.log('===============================');
 
   // Build clinician lookup for names
   const clinicianMap = new Map<number, { name: string; role: string }>();

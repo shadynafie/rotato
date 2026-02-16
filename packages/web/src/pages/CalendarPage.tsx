@@ -4,7 +4,20 @@ import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { getSurname, formatLeaveLabel, formatDutyDisplay, formatDateLong } from '../utils/formatters';
-import { COLORS } from '../utils/constants';
+import { COLORS, getLeaveColors } from '../utils/constants';
+import {
+  getDateString,
+  getTodayString,
+  isToday,
+  addDaysStr,
+  addMonthsStr,
+  getWeekStartStr,
+  getWeekEndStr,
+  getWeekDatesStr,
+  getMonthStartStr,
+  getMonthDaysStr,
+  formatWeekDayHeader,
+} from '../utils/dateHelpers';
 
 interface ScheduleEntry {
   date: string;
@@ -45,67 +58,11 @@ interface EditingCell {
   currentEntry: ScheduleEntry | null;
 }
 
-// Get today's date in YYYY-MM-DD format
-function getDateString(date: Date) {
-  const yyyy = date.getFullYear();
-  const mm = `${date.getMonth() + 1}`.padStart(2, '0');
-  const dd = `${date.getDate()}`.padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function getTodayString() {
-  return getDateString(new Date());
-}
-
-function addDays(dateStr: string, days: number): string {
-  const date = new Date(dateStr);
-  date.setDate(date.getDate() + days);
-  return getDateString(date);
-}
-
-function isToday(dateStr: string): boolean {
-  return dateStr === getTodayString();
-}
-
-// Get Monday of the week containing the given date
-function getWeekStart(dateStr: string): string {
-  const date = new Date(dateStr);
-  const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
-  const monday = new Date(date.setDate(diff));
-  return getDateString(monday);
-}
-
-// Get Sunday of the week containing the given date
-function getWeekEnd(dateStr: string): string {
-  const weekStart = getWeekStart(dateStr);
-  return addDays(weekStart, 6);
-}
-
-// Get all dates for a week starting from Monday
-function getWeekDates(weekStartStr: string): string[] {
-  const dates: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    dates.push(addDays(weekStartStr, i));
-  }
-  return dates;
-}
-
-// Format date for week header (e.g., "Mon 10")
-function formatWeekDayHeader(dateStr: string): { day: string; date: number; isToday: boolean } {
-  const date = new Date(dateStr);
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  return {
-    day: days[date.getDay()],
-    date: date.getDate(),
-    isToday: isToday(dateStr),
-  };
-}
 
 // Format week range for display (e.g., "10 - 16 February 2025")
 function formatWeekRange(weekStartStr: string): string {
   const start = new Date(weekStartStr);
-  const end = new Date(addDays(weekStartStr, 6));
+  const end = new Date(addDaysStr(weekStartStr, 6));
 
   const startDay = start.getDate();
   const endDay = end.getDate();
@@ -226,9 +183,9 @@ export const CalendarPage: React.FC = () => {
   const queryClient = useQueryClient();
 
   // Week view calculations
-  const weekStart = useMemo(() => getWeekStart(selectedDate), [selectedDate]);
-  const weekEnd = useMemo(() => getWeekEnd(selectedDate), [selectedDate]);
-  const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart]);
+  const weekStart = useMemo(() => getWeekStartStr(selectedDate), [selectedDate]);
+  const weekEnd = useMemo(() => getWeekEndStr(selectedDate), [selectedDate]);
+  const weekDates = useMemo(() => getWeekDatesStr(weekStart), [weekStart]);
 
   // Month view calculations
   const monthStart = useMemo(() => getMonthStart(selectedDate), [selectedDate]);
@@ -346,18 +303,18 @@ export const CalendarPage: React.FC = () => {
     if (view === 'month') {
       setSelectedDate(addMonths(selectedDate, -1));
     } else if (view === 'week') {
-      setSelectedDate(addDays(weekStart, -7));
+      setSelectedDate(addDaysStr(weekStart, -7));
     } else {
-      setSelectedDate(addDays(selectedDate, -1));
+      setSelectedDate(addDaysStr(selectedDate, -1));
     }
   };
   const goToNext = () => {
     if (view === 'month') {
       setSelectedDate(addMonths(selectedDate, 1));
     } else if (view === 'week') {
-      setSelectedDate(addDays(weekStart, 7));
+      setSelectedDate(addDaysStr(weekStart, 7));
     } else {
-      setSelectedDate(addDays(selectedDate, 1));
+      setSelectedDate(addDaysStr(selectedDate, 1));
     }
   };
   const goToToday = () => setSelectedDate(getTodayString());
@@ -409,7 +366,8 @@ export const CalendarPage: React.FC = () => {
       return { text: 'On-call', color: COLORS.oncall, bg: COLORS.oncallBg };
     }
     if (entry.isLeave) {
-      return { text: formatLeaveLabel(entry.leaveType), color: COLORS.leave, bg: COLORS.leaveBg };
+      const leaveColors = getLeaveColors(entry.leaveType);
+      return { text: formatLeaveLabel(entry.leaveType), color: leaveColors.color, bg: leaveColors.bg };
     }
     // Rest days for registrars (from on-call recovery)
     if (entry.isRest) {
@@ -489,7 +447,7 @@ export const CalendarPage: React.FC = () => {
     const lookup = new Map<string, {
       consultantOncall: string | null;
       registrarOncall: string | null;
-      onLeave: string[];
+      onLeave: { name: string; leaveType: string | null }[];
       onRest: string[];  // Registrars on rest day
     }>();
 
@@ -512,8 +470,8 @@ export const CalendarPage: React.FC = () => {
       }
       if (entry.isLeave) {
         // Avoid duplicates (clinician may have AM and PM leave entries)
-        if (!data.onLeave.includes(entry.clinicianName)) {
-          data.onLeave.push(entry.clinicianName);
+        if (!data.onLeave.find(l => l.name === entry.clinicianName)) {
+          data.onLeave.push({ name: entry.clinicianName, leaveType: entry.leaveType });
         }
       }
       if (entry.isRest && entry.isRestOff) {
@@ -539,7 +497,8 @@ export const CalendarPage: React.FC = () => {
       return { text: 'On-call', color: COLORS.oncall, bg: 'rgba(255, 149, 0, 0.15)', isManual: entry.source === 'manual' };
     }
     if (entry.isLeave) {
-      return { text: 'Leave', color: COLORS.leave, bg: 'rgba(255, 59, 48, 0.15)', isManual: entry.source === 'manual' };
+      const leaveColors = getLeaveColors(entry.leaveType);
+      return { text: formatLeaveLabel(entry.leaveType), color: leaveColors.color, bg: `${leaveColors.color}26`, isManual: entry.source === 'manual' };
     }
     // Rest days for registrars (from on-call recovery)
     if (entry.isRest) {
@@ -1418,25 +1377,28 @@ export const CalendarPage: React.FC = () => {
                         </Text>
                       </Box>
                     )}
-                    {dayInfo?.onLeave && dayInfo.onLeave.slice(0, 2).map((name) => (
-                      <Box
-                        key={name}
-                        mb={2}
-                        px={4}
-                        py={2}
-                        style={{
-                          backgroundColor: 'rgba(255, 59, 48, 0.12)',
-                          borderRadius: 4,
-                        }}
-                        title={`On Leave: ${name}`}
-                      >
-                        <Text size="xs" c="#ff3b30" fw={500} lineClamp={1}>
-                          {getSurname(name)}
-                        </Text>
-                      </Box>
-                    ))}
+                    {dayInfo?.onLeave && dayInfo.onLeave.slice(0, 2).map((leave) => {
+                      const leaveColors = getLeaveColors(leave.leaveType);
+                      return (
+                        <Box
+                          key={leave.name}
+                          mb={2}
+                          px={4}
+                          py={2}
+                          style={{
+                            backgroundColor: `${leaveColors.color}1F`,
+                            borderRadius: 4,
+                          }}
+                          title={`${formatLeaveLabel(leave.leaveType)}: ${leave.name}`}
+                        >
+                          <Text size="xs" c={leaveColors.color} fw={500} lineClamp={1}>
+                            {getSurname(leave.name)}
+                          </Text>
+                        </Box>
+                      );
+                    })}
                     {dayInfo?.onLeave && dayInfo.onLeave.length > 2 && (
-                      <Text size="xs" c="#ff3b30" px={4}>
+                      <Text size="xs" c={COLORS.textSecondary} px={4}>
                         +{dayInfo.onLeave.length - 2} more
                       </Text>
                     )}

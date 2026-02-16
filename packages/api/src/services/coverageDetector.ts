@@ -1,5 +1,6 @@
 import { prisma } from '../prisma.js';
 import type { CoverageReason, Session } from '../types/enums.js';
+import { weekOfMonth, getDayOfWeek, isWeekday } from '../utils/dateHelpers.js';
 
 export interface CoverageNeed {
   date: Date;
@@ -9,31 +10,6 @@ export interface CoverageNeed {
   reason: CoverageReason;
   // The registrar who is on leave (for tracking purposes)
   absentRegistrarId?: number;
-}
-
-/**
- * Get the week number of the month (1-5) for a given date
- */
-function weekOfMonth(date: Date): number {
-  const dayOfMonth = date.getDate();
-  return Math.min(5, Math.ceil(dayOfMonth / 7));
-}
-
-/**
- * Get the day of week (1=Monday, 5=Friday) for a given date
- */
-function getDayOfWeek(date: Date): number {
-  const day = date.getDay();
-  // Convert from 0=Sunday to 1=Monday
-  return day === 0 ? 7 : day;
-}
-
-/**
- * Check if a date is a weekday (Monday-Friday)
- */
-function isWeekday(date: Date): boolean {
-  const day = date.getDay();
-  return day >= 1 && day <= 5;
 }
 
 /**
@@ -277,7 +253,8 @@ export async function createCoverageRequests(needs: CoverageNeed[]): Promise<num
           consultantId: need.consultantId,
           dutyId: need.dutyId,
           reason: need.reason,
-          status: 'pending'
+          status: 'pending',
+          absentRegistrarId: need.absentRegistrarId ?? null
         }
       });
       created++;
@@ -288,69 +265,32 @@ export async function createCoverageRequests(needs: CoverageNeed[]): Promise<num
 }
 
 /**
- * Cancel coverage requests for a specific leave entry.
+ * Delete coverage requests for a specific leave entry.
  * Called when a leave is deleted.
- * Now handles registrar leave cancellation.
+ * Uses absentRegistrarId for direct lookup.
  */
 export async function cancelCoverageRequestsForLeave(
   clinicianId: number,
   date: Date,
   session: Session
 ): Promise<number> {
-  // Get the clinician to check their role
-  const clinician = await prisma.clinician.findUnique({
-    where: { id: clinicianId }
-  });
-
-  if (!clinician || clinician.role !== 'registrar') {
-    return 0;
-  }
-
   const sessions = session === 'FULL' ? ['AM', 'PM'] : [session];
 
-  // Find what consultant this registrar was supporting on this date
+  // Normalize the date to start of day for consistent comparison
   const dateObj = new Date(date);
-  const weekNo = weekOfMonth(dateObj);
-  const dayOfWeek = getDayOfWeek(dateObj);
+  dateObj.setHours(0, 0, 0, 0);
 
-  const jobPlan = await prisma.jobPlanWeek.findUnique({
+  const result = await prisma.coverageRequest.deleteMany({
     where: {
-      clinicianId_weekNo_dayOfWeek: {
-        clinicianId,
-        weekNo,
-        dayOfWeek
-      }
+      absentRegistrarId: clinicianId,
+      date: dateObj,
+      session: { in: sessions },
+      reason: 'leave',
+      status: 'pending'
     }
   });
 
-  if (!jobPlan) return 0;
-
-  let cancelled = 0;
-
-  for (const sess of sessions) {
-    const consultantId = sess === 'AM'
-      ? jobPlan.amSupportingClinicianId
-      : jobPlan.pmSupportingClinicianId;
-
-    if (!consultantId) continue;
-
-    const result = await prisma.coverageRequest.updateMany({
-      where: {
-        consultantId,
-        date: dateObj,
-        session: sess,
-        reason: 'leave',
-        status: 'pending'
-      },
-      data: {
-        status: 'cancelled'
-      }
-    });
-
-    cancelled += result.count;
-  }
-
-  return cancelled;
+  return result.count;
 }
 
 /**

@@ -49,6 +49,7 @@ model Clinician {
   notifications   Notification[]
   coverageRequestsAsConsultant CoverageRequest[] @relation("CoverageConsultant")
   coverageAssignmentsAsRegistrar CoverageRequest[] @relation("CoverageRegistrar")
+  coverageRequestsAsAbsent CoverageRequest[] @relation("CoverageAbsent")
 }
 
 model Duty {
@@ -239,6 +240,8 @@ model CoverageRequest {
   duty                Duty       @relation(fields: [dutyId], references: [id])
   reason              String     // "leave" | "oncall_conflict" | "manual"
   status              String     @default("pending") // "pending" | "assigned" | "cancelled"
+  absentRegistrarId   Int?       // The registrar whose absence caused this coverage need
+  absentRegistrar     Clinician? @relation("CoverageAbsent", fields: [absentRegistrarId], references: [id])
   assignedRegistrarId Int?
   assignedRegistrar   Clinician? @relation("CoverageRegistrar", fields: [assignedRegistrarId], references: [id])
   assignedBy          Int?
@@ -250,4 +253,5 @@ model CoverageRequest {
   @@unique([date, session, consultantId, dutyId])
   @@index([date])
   @@index([status])
+  @@index([absentRegistrarId])
 }

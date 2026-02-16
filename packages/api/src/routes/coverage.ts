@@ -306,4 +306,71 @@ export async function coverageRoutes(app: FastifyInstance) {
 
     return result;
   });
+
+  // Cleanup orphaned coverage requests (those with reason='leave' but no matching leave entry)
+  app.post('/api/coverage/cleanup-orphaned', { preHandler: requireAuth }, async (request) => {
+    // Find all leave-based coverage requests
+    const coverageRequests = await prisma.coverageRequest.findMany({
+      where: {
+        reason: 'leave',
+        status: 'pending'
+      }
+    });
+
+    let deleted = 0;
+    for (const cr of coverageRequests) {
+      // Check if there's a matching leave for this coverage request
+      const matchingLeave = await prisma.leave.findFirst({
+        where: {
+          date: cr.date,
+          OR: [
+            { session: cr.session },
+            { session: 'FULL' }
+          ],
+          clinician: { role: 'registrar' }
+        }
+      });
+
+      // If no matching leave exists, delete the coverage request
+      if (!matchingLeave) {
+        await prisma.coverageRequest.delete({ where: { id: cr.id } });
+        await logAudit({
+          actorUserId: request.user?.sub,
+          action: 'delete',
+          entity: 'coverageRequest',
+          entityId: cr.id,
+          before: cr
+        });
+        deleted++;
+      }
+    }
+
+    return {
+      checked: coverageRequests.length,
+      deleted,
+      message: `Cleaned up ${deleted} orphaned coverage requests`
+    };
+  });
+
+  // Hard delete a coverage request (permanently remove)
+  app.delete('/api/coverage/:id/permanent', { preHandler: requireAuth }, async (request) => {
+    const id = Number((request.params as { id: string }).id);
+
+    const before = await prisma.coverageRequest.findUnique({ where: { id } });
+    if (!before) {
+      return { ok: false, message: 'Coverage request not found' };
+    }
+
+    await prisma.coverageRequest.delete({ where: { id } });
+
+    await logAudit({
+      actorUserId: request.user?.sub,
+      action: 'delete',
+      entity: 'coverageRequest',
+      entityId: id,
+      before
+    });
+
+    return { ok: true };
+  });
 }

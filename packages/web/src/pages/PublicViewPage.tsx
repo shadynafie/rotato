@@ -5,6 +5,17 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { formatLeaveLabel, formatDateLong, getSurname } from '../utils/formatters';
 import { COLORS } from '../utils/constants';
+import {
+  getDateString,
+  getTodayString,
+  addDaysStr,
+  addMonthsStr,
+  getWeekStartStr,
+  getWeekEndStr,
+  getWeekDatesStr,
+  getMonthStartStr,
+  getMonthEndStr,
+} from '../utils/dateHelpers';
 
 interface ScheduleEntry {
   date: string;
@@ -29,62 +40,8 @@ interface OncallToday {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
-// Date helper functions
-function getDateString(date: Date): string {
-  const yyyy = date.getFullYear();
-  const mm = `${date.getMonth() + 1}`.padStart(2, '0');
-  const dd = `${date.getDate()}`.padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function getTodayString(): string {
-  return getDateString(new Date());
-}
-
-function addDays(dateStr: string, days: number): string {
-  const date = new Date(dateStr);
-  date.setDate(date.getDate() + days);
-  return getDateString(date);
-}
-
-function addMonths(dateStr: string, months: number): string {
-  const date = new Date(dateStr);
-  date.setMonth(date.getMonth() + months);
-  return getDateString(date);
-}
-
-function getWeekStart(dateStr: string): string {
-  const date = new Date(dateStr);
-  const day = date.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  date.setDate(date.getDate() + diff);
-  return getDateString(date);
-}
-
-function getWeekEnd(dateStr: string): string {
-  const start = getWeekStart(dateStr);
-  return addDays(start, 6);
-}
-
-function getWeekDates(weekStart: string): string[] {
-  const dates: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    dates.push(addDays(weekStart, i));
-  }
-  return dates;
-}
-
-function getMonthStart(dateStr: string): string {
-  const date = new Date(dateStr);
-  return getDateString(new Date(date.getFullYear(), date.getMonth(), 1));
-}
-
-function getMonthEnd(dateStr: string): string {
-  const date = new Date(dateStr);
-  return getDateString(new Date(date.getFullYear(), date.getMonth() + 1, 0));
-}
-
-function getMonthDays(dateStr: string): { date: string; isCurrentMonth: boolean }[] {
+// Calendar grid helper - includes padding days for consistent 6-week grid
+function getMonthCalendarDays(dateStr: string): { date: string; isCurrentMonth: boolean }[] {
   const date = new Date(dateStr);
   const year = date.getFullYear();
   const month = date.getMonth();
@@ -130,12 +87,12 @@ export const PublicViewPage: React.FC = () => {
   const today = getTodayString();
 
   // Calculate week and month ranges
-  const weekStart = useMemo(() => getWeekStart(selectedDate), [selectedDate]);
-  const weekEnd = useMemo(() => getWeekEnd(selectedDate), [selectedDate]);
-  const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart]);
-  const monthStart = useMemo(() => getMonthStart(selectedDate), [selectedDate]);
-  const monthEnd = useMemo(() => getMonthEnd(selectedDate), [selectedDate]);
-  const monthDays = useMemo(() => getMonthDays(selectedDate), [selectedDate]);
+  const weekStart = useMemo(() => getWeekStartStr(selectedDate), [selectedDate]);
+  const weekEnd = useMemo(() => getWeekEndStr(selectedDate), [selectedDate]);
+  const weekDates = useMemo(() => getWeekDatesStr(weekStart), [weekStart]);
+  const monthStart = useMemo(() => getMonthStartStr(selectedDate), [selectedDate]);
+  const monthEnd = useMemo(() => getMonthEndStr(selectedDate), [selectedDate]);
+  const monthDays = useMemo(() => getMonthCalendarDays(selectedDate), [selectedDate]);
 
   // Fetch selected day's schedule (for "today" view - which can show any selected date)
   const dayScheduleQuery = useQuery({
@@ -190,21 +147,21 @@ export const PublicViewPage: React.FC = () => {
   // Navigation functions
   const goToPrev = () => {
     if (view === 'month') {
-      setSelectedDate(addMonths(selectedDate, -1));
+      setSelectedDate(addMonthsStr(selectedDate, -1));
     } else if (view === 'week') {
-      setSelectedDate(addDays(weekStart, -7));
+      setSelectedDate(addDaysStr(weekStart, -7));
     } else {
-      setSelectedDate(addDays(selectedDate, -1));
+      setSelectedDate(addDaysStr(selectedDate, -1));
     }
   };
 
   const goToNext = () => {
     if (view === 'month') {
-      setSelectedDate(addMonths(selectedDate, 1));
+      setSelectedDate(addMonthsStr(selectedDate, 1));
     } else if (view === 'week') {
-      setSelectedDate(addDays(weekStart, 7));
+      setSelectedDate(addDaysStr(weekStart, 7));
     } else {
-      setSelectedDate(addDays(selectedDate, 1));
+      setSelectedDate(addDaysStr(selectedDate, 1));
     }
   };
 

@@ -35,8 +35,10 @@ export const COLORS = {
   // Status colors
   oncall: '#ff9500',
   oncallBg: 'rgba(255, 149, 0, 0.1)',
-  leave: '#ff3b30',
+  leave: '#ff3b30',  // Annual/Sick leave - red
   leaveBg: 'rgba(255, 59, 48, 0.1)',
+  leaveStudy: '#af52de',  // Study/Professional leave - purple
+  leaveStudyBg: 'rgba(175, 82, 222, 0.1)',
   restOff: '#ff3b30',  // Same as leave
   restOffBg: 'rgba(255, 59, 48, 0.1)',  // Same as leave
   success: '#34c759',
@@ -52,4 +54,17 @@ export const COLORS = {
  */
 export function getColorWithOpacity(color: string, opacity: number): string {
   return `${color}${Math.round(opacity * 255).toString(16).padStart(2, '0')}`;
+}
+
+/**
+ * Get leave colors based on leave type
+ * - Annual/Sick: Red
+ * - Study/Professional: Purple
+ */
+export function getLeaveColors(leaveType: string | null): { color: string; bg: string } {
+  if (leaveType === 'study' || leaveType === 'professional') {
+    return { color: COLORS.leaveStudy, bg: COLORS.leaveStudyBg };
+  }
+  // Default to red for annual/sick/unknown
+  return { color: COLORS.leave, bg: COLORS.leaveBg };
 }

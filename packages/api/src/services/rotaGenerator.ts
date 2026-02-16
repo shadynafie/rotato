@@ -1,6 +1,7 @@
 import { prisma } from '../prisma.js';
 import type { Session, RotaSource } from '../types/enums.js';
 import type { OnCallConfig, OnCallSlot, OnCallPattern, SlotAssignment, Duty } from '@prisma/client';
+import { formatDateString, dateRange, weekOfMonth, getDayOfWeek } from '../utils/dateHelpers.js';
 
 // Rest day entry type
 interface RestDayEntry {
@@ -11,38 +12,12 @@ interface RestDayEntry {
   isOff: boolean;
 }
 
-function* dateRange(start: Date, end: Date) {
-  const current = new Date(start);
-  while (current <= end) {
-    yield new Date(current);
-    current.setDate(current.getDate() + 1);
-  }
-}
-
-function weekOfMonth(date: Date): number {
-  const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
-  const dayOfMonth = date.getDate();
-  const adjusted = dayOfMonth + firstDay.getDay();
-  return Math.ceil(adjusted / 7);
-}
-
-// Get day of week: 1=Monday, 2=Tuesday, ..., 5=Friday, 6=Saturday, 7=Sunday
-function getDayOfWeek(date: Date): number {
-  const jsDay = date.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
-  return jsDay === 0 ? 7 : jsDay;
-}
-
 // Slot-based on-call clinician picker
 interface SlotBasedData {
   config: OnCallConfig | null;
   slots: OnCallSlot[];
   patterns: OnCallPattern[];  // Only for registrars
   assignments: SlotAssignment[];
-}
-
-// Helper to extract YYYY-MM-DD from a Date object (timezone-safe)
-function toDateString(d: Date): string {
-  return d.toISOString().split('T')[0];
 }
 
 function pickOncallClinicianSlotBased(
@@ -55,8 +30,8 @@ function pickOncallClinicianSlotBased(
   if (!config || slots.length === 0) return null;
 
   // Use string-based date comparison to avoid timezone issues
-  const dateStr = toDateString(date);
-  const startDateStr = toDateString(config.startDate);
+  const dateStr = formatDateString(date);
+  const startDateStr = formatDateString(config.startDate);
 
   // Calculate days difference using UTC timestamps of midnight
   const dateMs = Date.parse(dateStr + 'T00:00:00Z');
@@ -80,11 +55,7 @@ function pickOncallClinicianSlotBased(
     if (patterns.length > 0) {
       // Explicit pattern configured - use it
       const pattern = patterns.find(p => p.dayOfCycle === dayOfCycle);
-      if (!pattern) {
-        // Log missing pattern for debugging
-        console.log(`[Registrar] No pattern found for dayOfCycle=${dayOfCycle}, date=${dateStr}`);
-        return null;
-      }
+      if (!pattern) return null;
       slotId = pattern.slotId;
     } else {
       // No explicit pattern - use implicit round-robin (like consultants but daily)
@@ -100,16 +71,11 @@ function pickOncallClinicianSlotBased(
   const assignment = assignments.find(a => {
     if (a.slotId !== slotId) return false;
 
-    const fromStr = toDateString(a.effectiveFrom);
-    const toStr = a.effectiveTo ? toDateString(a.effectiveTo) : '9999-12-31';
+    const fromStr = formatDateString(a.effectiveFrom);
+    const toStr = a.effectiveTo ? formatDateString(a.effectiveTo) : '9999-12-31';
 
     return fromStr <= dateStr && toStr >= dateStr;
   });
-
-  // Debug log for first day of each month (to avoid flooding)
-  if (role === 'registrar' && date.getDate() === 1) {
-    console.log(`[Registrar] Date ${dateStr}: daysSinceStart=${daysSinceStart}, slotId=${slotId}, assignment=${assignment ? `clinician ${assignment.clinicianId}` : 'NONE'}`);
-  }
 
   return assignment?.clinicianId ?? null;
 }
@@ -128,7 +94,7 @@ function computeRestDaysForRegistrars(
 ): RestDayEntry[] {
   const restDays: RestDayEntry[] = [];
   const restDayKey = (date: Date, clinicianId: number, session: Session) =>
-    `${toDateString(date)}-${clinicianId}-${session}`;
+    `${formatDateString(date)}-${clinicianId}-${session}`;
   const addedKeys = new Set<string>();
 
   // Extend date range to check for on-calls that might generate rest days within our range
@@ -268,19 +234,6 @@ export async function generateRota(from: Date, to: Date) {
     assignments: registrarAssignments
   };
 
-  // Debug logging for troubleshooting
-  console.log('=== ROTA GENERATOR DEBUG ===');
-  console.log('Registrar setup:');
-  console.log('  - Slots:', registrarSlots.length, registrarSlots.map(s => `Slot ${s.position} (id=${s.id})`).join(', '));
-  console.log('  - Patterns:', registrarPatterns.length, registrarPatterns.length > 0 ? `(days 1-${Math.max(...registrarPatterns.map(p => p.dayOfCycle))})` : '(using implicit)');
-  console.log('  - Assignments:', registrarAssignments.length);
-  registrarAssignments.forEach(a => {
-    console.log(`    - Slot ${a.slotId} -> Clinician ${a.clinicianId} (${a.effectiveFrom.toISOString().split('T')[0]} to ${a.effectiveTo?.toISOString().split('T')[0] ?? 'ongoing'})`);
-  });
-  console.log('  - Config start date:', registrarConfig?.startDate?.toISOString().split('T')[0] ?? 'NOT SET');
-  console.log('  - Cycle length:', registrarConfig?.cycleLength ?? 'NOT SET');
-  console.log('===========================');
-
   // ============================================
   // Compute rest days for registrars
   // ============================================
@@ -298,15 +251,9 @@ export async function generateRota(from: Date, to: Date) {
   // Build rest day lookup map: "YYYY-MM-DD-clinicianId-session" -> RestDayEntry
   const restDayLookup = new Map<string, RestDayEntry>();
   for (const restDay of restDays) {
-    const key = `${toDateString(restDay.date)}-${restDay.clinicianId}-${restDay.session}`;
+    const key = `${formatDateString(restDay.date)}-${restDay.clinicianId}-${restDay.session}`;
     restDayLookup.set(key, restDay);
   }
-
-  console.log('=== REST DAYS DEBUG ===');
-  console.log('  - SPA duty:', spaDuty ? `${spaDuty.name} (id=${spaDuty.id})` : 'NOT FOUND');
-  console.log('  - Registrar IDs:', registrarClinicianIds.join(', '));
-  console.log('  - Rest days computed:', restDays.length);
-  console.log('=======================');
 
   for (const date of dateRange(from, to)) {
     const weekNo = Math.min(5, Math.max(1, weekOfMonth(date)));
@@ -358,7 +305,7 @@ export async function generateRota(from: Date, to: Date) {
         }
 
         // Rest days for registrars (from on-call recovery)
-        const restKey = `${toDateString(date)}-${clinician.id}-${session}`;
+        const restKey = `${formatDateString(date)}-${clinician.id}-${session}`;
         const restEntry = restDayLookup.get(restKey);
         if (restEntry && clinician.role === 'registrar') {
           const payload = {
