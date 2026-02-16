@@ -64,7 +64,7 @@ function pickOncallClinicianSlotBased(
   let slotId: number;
 
   if (role === 'consultant') {
-    // Consultants: week N = slot with position N
+    // Consultants: week N = slot with position N (implicit pattern)
     const weeksSinceStart = Math.floor(daysSinceStart / 7);
     const weekOfCycle = ((weeksSinceStart % config.cycleLength) + config.cycleLength) % config.cycleLength;
     const position = weekOfCycle + 1; // 1-indexed
@@ -72,11 +72,22 @@ function pickOncallClinicianSlotBased(
     if (!slot) return null;
     slotId = slot.id;
   } else {
-    // Registrars: look up explicit pattern
+    // Registrars: use explicit pattern if available, otherwise implicit round-robin
     const dayOfCycle = ((daysSinceStart % config.cycleLength) + config.cycleLength) % config.cycleLength + 1;
-    const pattern = patterns.find(p => p.dayOfCycle === dayOfCycle);
-    if (!pattern) return null;
-    slotId = pattern.slotId;
+
+    if (patterns.length > 0) {
+      // Explicit pattern configured - use it
+      const pattern = patterns.find(p => p.dayOfCycle === dayOfCycle);
+      if (!pattern) return null;
+      slotId = pattern.slotId;
+    } else {
+      // No explicit pattern - use implicit round-robin (like consultants but daily)
+      // Day N of cycle = slot ((N-1) mod numSlots) + 1
+      const position = ((dayOfCycle - 1) % slots.length) + 1;
+      const slot = slots.find(s => s.position === position);
+      if (!slot) return null;
+      slotId = slot.id;
+    }
   }
 
   // Find active assignment for this slot on this date
@@ -145,9 +156,9 @@ export async function generateRota(from: Date, to: Date) {
 
   // Check if slot-based system is set up PER ROLE
   // Consultants: use slot-based if consultant slots exist (implicit pattern: week N = slot N)
-  // Registrars: use slot-based only if registrar slots AND patterns exist (explicit pattern required)
+  // Registrars: use slot-based if registrar slots exist (uses explicit pattern if configured, otherwise implicit round-robin)
   const useSlotBasedConsultants = consultantSlots.length > 0 && consultantConfig !== null;
-  const useSlotBasedRegistrars = registrarSlots.length > 0 && registrarPatterns.length > 0 && registrarConfig !== null;
+  const useSlotBasedRegistrars = registrarSlots.length > 0 && registrarConfig !== null;
 
   // DEPRECATED: Old system fallback (used when slot-based not configured for a role)
   const cycles = await prisma.oncallCycle.findMany();
