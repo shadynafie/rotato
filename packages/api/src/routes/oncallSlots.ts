@@ -543,29 +543,43 @@ export async function oncallSlotsRoutes(app: FastifyInstance) {
     }
 
     await prisma.$transaction(async (tx) => {
-      // Close any current open assignment for this slot
-      const currentAssignment = await tx.slotAssignment.findFirst({
+      // Find ALL open or overlapping assignments for this slot
+      const existingAssignments = await tx.slotAssignment.findMany({
         where: {
           slotId: body.slotId,
-          effectiveTo: null,
-          effectiveFrom: { lt: effectiveFrom },
+          OR: [
+            { effectiveTo: null },  // Open-ended assignments
+            { effectiveTo: { gte: effectiveFrom } },  // Assignments that extend into or past the new start date
+          ],
         },
       });
 
-      if (currentAssignment) {
-        await tx.slotAssignment.update({
-          where: { id: currentAssignment.id },
-          data: { effectiveTo: yesterday },
-        });
-
-        await logAuditTx(tx, {
-          actorUserId: request.user?.sub,
-          action: 'update',
-          entity: 'slotAssignment',
-          entityId: currentAssignment.id,
-          before: currentAssignment,
-          after: { ...currentAssignment, effectiveTo: yesterday },
-        });
+      for (const existing of existingAssignments) {
+        if (existing.effectiveFrom >= effectiveFrom) {
+          // Assignment starts on or after new one - delete it (we're replacing it)
+          await tx.slotAssignment.delete({ where: { id: existing.id } });
+          await logAuditTx(tx, {
+            actorUserId: request.user?.sub,
+            action: 'delete',
+            entity: 'slotAssignment',
+            entityId: existing.id,
+            before: existing,
+          });
+        } else {
+          // Assignment started before - close it the day before new assignment starts
+          await tx.slotAssignment.update({
+            where: { id: existing.id },
+            data: { effectiveTo: yesterday },
+          });
+          await logAuditTx(tx, {
+            actorUserId: request.user?.sub,
+            action: 'update',
+            entity: 'slotAssignment',
+            entityId: existing.id,
+            before: existing,
+            after: { ...existing, effectiveTo: yesterday },
+          });
+        }
       }
 
       // Create new assignment
