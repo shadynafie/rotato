@@ -160,6 +160,23 @@ export async function generateRota(from: Date, to: Date) {
   const useSlotBasedConsultants = consultantSlots.length > 0 && consultantConfig !== null;
   const useSlotBasedRegistrars = registrarSlots.length > 0 && registrarConfig !== null;
 
+  // Debug logging for troubleshooting
+  console.log('[Rota Generator] Registrar debug:', {
+    registrarSlotsCount: registrarSlots.length,
+    registrarSlotIds: registrarSlots.map(s => ({ id: s.id, position: s.position })),
+    registrarPatternsCount: registrarPatterns.length,
+    registrarPatternSample: registrarPatterns.slice(0, 3).map(p => ({ dayOfCycle: p.dayOfCycle, slotId: p.slotId })),
+    registrarAssignmentsCount: registrarAssignments.length,
+    registrarAssignmentDetails: registrarAssignments.map(a => ({
+      slotId: a.slotId,
+      clinicianId: a.clinicianId,
+      from: a.effectiveFrom,
+      to: a.effectiveTo
+    })),
+    registrarConfigStartDate: registrarConfig?.startDate,
+    useSlotBasedRegistrars,
+  });
+
   // DEPRECATED: Old system fallback (used when slot-based not configured for a role)
   const cycles = await prisma.oncallCycle.findMany();
   const consultantCycle = cycles.filter((c) => c.role === 'consultant');
