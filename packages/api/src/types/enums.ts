@@ -4,7 +4,7 @@
 export type ClinicianRole = 'consultant' | 'registrar';
 export type RegistrarGrade = 'junior' | 'senior';
 export type Session = 'AM' | 'PM' | 'FULL';
-export type RotaSource = 'jobplan' | 'oncall' | 'manual' | 'leave';
+export type RotaSource = 'jobplan' | 'oncall' | 'manual' | 'leave' | 'rest';
 export type LeaveType = 'annual' | 'study' | 'sick' | 'professional';
 export type CoverageReason = 'leave' | 'oncall_conflict' | 'manual';
 export type CoverageStatus = 'pending' | 'assigned' | 'cancelled';
@@ -16,7 +16,7 @@ export type NotificationStatus = 'pending' | 'sent' | 'failed';
 export const ClinicianRoles = ['consultant', 'registrar'] as const;
 export const RegistrarGrades = ['junior', 'senior'] as const;
 export const Sessions = ['AM', 'PM', 'FULL'] as const;
-export const RotaSources = ['jobplan', 'oncall', 'manual', 'leave'] as const;
+export const RotaSources = ['jobplan', 'oncall', 'manual', 'leave', 'rest'] as const;
 export const LeaveTypes = ['annual', 'study', 'sick', 'professional'] as const;
 export const CoverageReasons = ['leave', 'oncall_conflict', 'manual'] as const;
 export const CoverageStatuses = ['pending', 'assigned', 'cancelled'] as const;

@@ -37,6 +37,8 @@ export const COLORS = {
   oncallBg: 'rgba(255, 149, 0, 0.1)',
   leave: '#ff3b30',
   leaveBg: 'rgba(255, 59, 48, 0.1)',
+  restOff: '#ff3b30',  // Same as leave
+  restOffBg: 'rgba(255, 59, 48, 0.1)',  // Same as leave
   success: '#34c759',
 
   // Backgrounds

@@ -15,8 +15,10 @@ interface ScheduleEntry {
   isOncall: boolean;
   isLeave: boolean;
   leaveType: string | null;
-  source: 'jobplan' | 'oncall' | 'leave' | 'manual';
+  source: 'jobplan' | 'oncall' | 'leave' | 'manual' | 'rest';
   manualOverrideId: number | null; // RotaEntry id if manually overridden
+  isRest: boolean;
+  isRestOff: boolean;  // true if OFF (no duty), false if SPA duty
   supportingClinicianId: number | null;
   supportingClinicianName: string | null;
 }
@@ -84,6 +86,12 @@ function computeOncallClinicianSlotBased(
     const weekOfCycle = ((weeksSinceStart % config.cycleLength) + config.cycleLength) % config.cycleLength;
     const position = weekOfCycle + 1; // 1-indexed
     const slot = slots.find(s => s.position === position);
+
+    // Debug log for first request of each day
+    if (new Date(dateStr).getDate() <= 3) {
+      console.log(`[Consultant OnCall] Date ${dateStr}: daysSinceStart=${daysSinceStart}, weeksSinceStart=${weeksSinceStart}, weekOfCycle=${weekOfCycle}, position=${position}, slotId=${slot?.id ?? 'NOT FOUND'}`);
+    }
+
     if (!slot) return null;
     slotId = slot.id;
   } else {
@@ -114,6 +122,11 @@ function computeOncallClinicianSlotBased(
     return fromStr <= dateStr && toStr >= dateStr;
   });
 
+  // Debug log for first few days
+  if (role === 'consultant' && new Date(dateStr).getDate() <= 3) {
+    console.log(`[Consultant OnCall] Date ${dateStr}: slotId=${slotId}, assignment=${assignment ? `clinicianId=${assignment.clinicianId}` : 'NONE'}`);
+  }
+
   return assignment?.clinicianId ?? null;
 }
 
@@ -142,7 +155,7 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
     prisma.rotaEntry.findMany({
       where: {
         date: { gte: from, lte: to },
-        source: 'manual'
+        source: { in: ['manual', 'rest'] }
       },
       include: { duty: true }
     }),
@@ -194,6 +207,18 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
     assignments: registrarAssignments
   };
 
+  // Debug logging for consultant on-call
+  console.log('=== SCHEDULE COMPUTER DEBUG ===');
+  console.log('Consultant setup:');
+  console.log('  - Config:', consultantConfig ? `cycleLength=${consultantConfig.cycleLength}, startDate=${formatDateString(consultantConfig.startDate)}` : 'NOT SET');
+  console.log('  - Slots:', consultantSlots.length, consultantSlots.map(s => `Slot ${s.position} (id=${s.id})`).join(', '));
+  console.log('  - Assignments:', consultantAssignments.length);
+  consultantAssignments.forEach(a => {
+    const slot = consultantSlots.find(s => s.id === a.slotId);
+    console.log(`    - Slot ${slot?.position} (id=${a.slotId}) -> Clinician ${a.clinicianId} (from ${formatDateString(a.effectiveFrom)} to ${a.effectiveTo ? formatDateString(a.effectiveTo) : 'ongoing'})`);
+  });
+  console.log('===============================');
+
   // Build clinician lookup for names
   const clinicianMap = new Map<number, { name: string; role: string }>();
   clinicians.forEach((c) => clinicianMap.set(c.id, { name: c.name, role: c.role }));
@@ -239,10 +264,16 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
 
   // Manual override lookup: clinicianId-date-session -> RotaEntry
   const manualMap = new Map<string, any>();
+  // Rest entries lookup: clinicianId-date-session -> RotaEntry
+  const restMap = new Map<string, any>();
   manualOverrides.forEach((m) => {
     const dateStr = formatDateString(new Date(m.date));
     const key = `${m.clinicianId}-${dateStr}-${m.session}`;
-    manualMap.set(key, m);
+    if (m.source === 'rest') {
+      restMap.set(key, m);
+    } else {
+      manualMap.set(key, m);
+    }
   });
 
   const dutyMap = new Map<number, { name: string; color: string | null }>();
@@ -292,10 +323,12 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
       for (const session of sessions) {
         const manualKey = `${clinician.id}-${dateStr}-${session}`;
         const manual = manualMap.get(manualKey);
+        const restKey = `${clinician.id}-${dateStr}-${session}`;
+        const rest = restMap.get(restKey);
         const coverageKey = `${clinician.id}-${dateStr}-${session}`;
         const coverage = coverageMap.get(coverageKey);
 
-        // Priority: Manual override > Leave > Coverage assignment > On-call > Job plan
+        // Priority: Manual override > Leave > Rest (registrar recovery) > Coverage assignment > On-call > Job plan
         let entry: ScheduleEntry;
 
         if (manual) {
@@ -316,7 +349,9 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
             source: 'manual',
             manualOverrideId: manual.id,
             supportingClinicianId: null,
-            supportingClinicianName: null
+            supportingClinicianName: null,
+            isRest: false,
+            isRestOff: false
           };
         } else if (leave && (leave.session === 'FULL' || leave.session === session)) {
           // Leave
@@ -335,7 +370,32 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
             source: 'leave',
             manualOverrideId: null,
             supportingClinicianId: null,
-            supportingClinicianName: null
+            supportingClinicianName: null,
+            isRest: false,
+            isRestOff: false
+          };
+        } else if (rest && clinician.role === 'registrar') {
+          // Rest day for registrar (from on-call recovery)
+          const duty = rest.dutyId ? dutyMap.get(rest.dutyId) : null;
+          const isOff = rest.dutyId === null;  // No duty = OFF
+          entry = {
+            date: dateStr,
+            clinicianId: clinician.id,
+            clinicianName: clinician.name,
+            clinicianRole: clinician.role as 'consultant' | 'registrar',
+            session,
+            dutyId: rest.dutyId,
+            dutyName: duty?.name ?? (isOff ? 'OFF' : null),
+            dutyColor: duty?.color ?? null,
+            isOncall: false,
+            isLeave: false,
+            leaveType: null,
+            source: 'rest',
+            manualOverrideId: null,
+            supportingClinicianId: null,
+            supportingClinicianName: null,
+            isRest: true,
+            isRestOff: isOff
           };
         } else if (coverage) {
           // Coverage assignment - registrar covering for a consultant
@@ -354,7 +414,9 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
             source: 'manual', // Show as manual since it's an explicit assignment
             manualOverrideId: null,
             supportingClinicianId: coverage.consultantId,
-            supportingClinicianName: coverage.consultantName
+            supportingClinicianName: coverage.consultantName,
+            isRest: false,
+            isRestOff: false
           };
         } else if (isOncall) {
           // On-call
@@ -373,7 +435,9 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
             source: 'oncall',
             manualOverrideId: null,
             supportingClinicianId: null,
-            supportingClinicianName: null
+            supportingClinicianName: null,
+            isRest: false,
+            isRestOff: false
           };
         } else if (isWeekday) {
           // Job plan (weekdays only)
@@ -399,7 +463,9 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
             source: 'jobplan',
             manualOverrideId: null,
             supportingClinicianId: supportingClinicianId ?? null,
-            supportingClinicianName: supportingClinician?.name ?? null
+            supportingClinicianName: supportingClinician?.name ?? null,
+            isRest: false,
+            isRestOff: false
           };
         } else {
           // Weekend with no on-call - empty entry
@@ -418,7 +484,9 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
             source: 'jobplan',
             manualOverrideId: null,
             supportingClinicianId: null,
-            supportingClinicianName: null
+            supportingClinicianName: null,
+            isRest: false,
+            isRestOff: false
           };
         }
 

@@ -18,10 +18,12 @@ interface ScheduleEntry {
   isOncall: boolean;
   isLeave: boolean;
   leaveType: string | null;
-  source: 'jobplan' | 'oncall' | 'leave' | 'manual';
+  source: 'jobplan' | 'oncall' | 'leave' | 'manual' | 'rest';
   manualOverrideId: number | null;
   supportingClinicianId: number | null;
   supportingClinicianName: string | null;
+  isRest: boolean;
+  isRestOff: boolean;
 }
 
 interface OncallToday {
@@ -409,6 +411,21 @@ export const CalendarPage: React.FC = () => {
     if (entry.isLeave) {
       return { text: formatLeaveLabel(entry.leaveType), color: COLORS.leave, bg: COLORS.leaveBg };
     }
+    // Rest days for registrars (from on-call recovery)
+    if (entry.isRest) {
+      if (entry.isRestOff) {
+        // OFF rest day - show with leave color
+        return { text: 'OFF', color: COLORS.restOff, bg: COLORS.restOffBg };
+      }
+      // SPA or other duty rest day - show with duty color
+      if (entry.dutyName) {
+        return {
+          text: entry.dutyName,
+          color: entry.dutyColor || COLORS.primary,
+          bg: `${entry.dutyColor || COLORS.primary}15`
+        };
+      }
+    }
     if (entry.dutyName) {
       const displayText = formatDutyDisplay(entry.dutyName, entry.supportingClinicianName, entry.clinicianRole === 'registrar');
       return {
@@ -466,13 +483,14 @@ export const CalendarPage: React.FC = () => {
   const weekConsultants = weekScheduleData.filter((s) => s.clinicianRole === 'consultant');
   const weekRegistrars = weekScheduleData.filter((s) => s.clinicianRole === 'registrar');
 
-  // Build month schedule lookup: date -> { consultantOncall, registrarOncall, onLeave }
+  // Build month schedule lookup: date -> { consultantOncall, registrarOncall, onLeave, onRest }
   const monthScheduleLookup = useMemo(() => {
     const entries = monthScheduleQuery.data || [];
     const lookup = new Map<string, {
       consultantOncall: string | null;
       registrarOncall: string | null;
       onLeave: string[];
+      onRest: string[];  // Registrars on rest day
     }>();
 
     entries.forEach((entry) => {
@@ -481,6 +499,7 @@ export const CalendarPage: React.FC = () => {
           consultantOncall: null,
           registrarOncall: null,
           onLeave: [],
+          onRest: [],
         });
       }
       const data = lookup.get(entry.date)!;
@@ -495,6 +514,12 @@ export const CalendarPage: React.FC = () => {
         // Avoid duplicates (clinician may have AM and PM leave entries)
         if (!data.onLeave.includes(entry.clinicianName)) {
           data.onLeave.push(entry.clinicianName);
+        }
+      }
+      if (entry.isRest && entry.isRestOff) {
+        // Only show OFF rest days in month view (not SPA which is normal duty)
+        if (!data.onRest.includes(entry.clinicianName)) {
+          data.onRest.push(entry.clinicianName);
         }
       }
     });
@@ -515,6 +540,22 @@ export const CalendarPage: React.FC = () => {
     }
     if (entry.isLeave) {
       return { text: 'Leave', color: COLORS.leave, bg: 'rgba(255, 59, 48, 0.15)', isManual: entry.source === 'manual' };
+    }
+    // Rest days for registrars (from on-call recovery)
+    if (entry.isRest) {
+      if (entry.isRestOff) {
+        // OFF rest day - show with leave color
+        return { text: 'OFF', color: COLORS.restOff, bg: COLORS.restOffBg, isManual: false };
+      }
+      // SPA or other duty rest day - show with duty color
+      if (entry.dutyName) {
+        return {
+          text: entry.dutyName,
+          color: entry.dutyColor || COLORS.primary,
+          bg: `${entry.dutyColor || COLORS.primary}20`,
+          isManual: false
+        };
+      }
     }
     if (entry.dutyName) {
       const displayText = formatDutyDisplay(entry.dutyName, entry.supportingClinicianName, entry.clinicianRole === 'registrar');
@@ -1397,6 +1438,29 @@ export const CalendarPage: React.FC = () => {
                     {dayInfo?.onLeave && dayInfo.onLeave.length > 2 && (
                       <Text size="xs" c="#ff3b30" px={4}>
                         +{dayInfo.onLeave.length - 2} more
+                      </Text>
+                    )}
+                    {dayInfo?.onRest && dayInfo.onRest.slice(0, 1).map((name) => (
+                      <Box
+                        key={`rest-${name}`}
+                        mb={2}
+                        px={4}
+                        py={2}
+                        style={{
+                          backgroundColor: 'rgba(255, 59, 48, 0.08)',
+                          borderRadius: 4,
+                          border: '1px dashed rgba(255, 59, 48, 0.3)',
+                        }}
+                        title={`Rest Day: ${name}`}
+                      >
+                        <Text size="xs" c="#ff3b30" fw={500} lineClamp={1}>
+                          {getSurname(name)} (Rest)
+                        </Text>
+                      </Box>
+                    ))}
+                    {dayInfo?.onRest && dayInfo.onRest.length > 1 && (
+                      <Text size="xs" c="#ff3b30" px={4}>
+                        +{dayInfo.onRest.length - 1} resting
                       </Text>
                     )}
                   </Box>

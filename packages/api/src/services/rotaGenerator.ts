@@ -1,6 +1,15 @@
 import { prisma } from '../prisma.js';
 import type { Session, RotaSource } from '../types/enums.js';
-import type { OnCallConfig, OnCallSlot, OnCallPattern, SlotAssignment } from '@prisma/client';
+import type { OnCallConfig, OnCallSlot, OnCallPattern, SlotAssignment, Duty } from '@prisma/client';
+
+// Rest day entry type
+interface RestDayEntry {
+  date: Date;
+  clinicianId: number;
+  session: Session;
+  dutyId: number | null;  // null = OFF, non-null = SPA duty
+  isOff: boolean;
+}
 
 function* dateRange(start: Date, end: Date) {
   const current = new Date(start);
@@ -105,6 +114,106 @@ function pickOncallClinicianSlotBased(
   return assignment?.clinicianId ?? null;
 }
 
+// Compute rest days for registrars based on on-call assignments
+// Rules:
+// - Weekend on-call (Saturday): Friday OFF, Monday OFF, Tuesday OFF
+// - Weekday on-call (Mon-Thu): Next day AM = SPA, PM = OFF
+// - Friday on-call: No rest day (weekend is rest)
+function computeRestDaysForRegistrars(
+  from: Date,
+  to: Date,
+  registrarData: SlotBasedData,
+  registrarClinicianIds: number[],
+  spaDuty: Duty | null
+): RestDayEntry[] {
+  const restDays: RestDayEntry[] = [];
+  const restDayKey = (date: Date, clinicianId: number, session: Session) =>
+    `${toDateString(date)}-${clinicianId}-${session}`;
+  const addedKeys = new Set<string>();
+
+  // Extend date range to check for on-calls that might generate rest days within our range
+  // Need to look 3 days before (Tuesday on-call -> generates rest day 1 day before)
+  // And 3 days after (Saturday on-call -> generates rest day for Tuesday, 3 days after)
+  const extendedFrom = new Date(from);
+  extendedFrom.setDate(extendedFrom.getDate() - 3);
+  const extendedTo = new Date(to);
+  extendedTo.setDate(extendedTo.getDate() + 3);
+
+  for (const date of dateRange(extendedFrom, extendedTo)) {
+    const dayOfWeek = getDayOfWeek(date); // 1=Mon, 2=Tue, ..., 5=Fri, 6=Sat, 7=Sun
+
+    for (const clinicianId of registrarClinicianIds) {
+      const oncallId = pickOncallClinicianSlotBased(date, 'registrar', registrarData);
+      if (oncallId !== clinicianId) continue;
+
+      // This registrar is on-call on this date
+      if (dayOfWeek === 6) {
+        // Saturday on-call -> Friday OFF, Monday OFF, Tuesday OFF
+        const friday = new Date(date);
+        friday.setDate(friday.getDate() - 1);
+        const monday = new Date(date);
+        monday.setDate(monday.getDate() + 2);
+        const tuesday = new Date(date);
+        tuesday.setDate(tuesday.getDate() + 3);
+
+        for (const restDate of [friday, monday, tuesday]) {
+          // Only add if within our actual requested range
+          if (restDate >= from && restDate <= to) {
+            for (const session of ['AM', 'PM'] as Session[]) {
+              const key = restDayKey(restDate, clinicianId, session);
+              if (!addedKeys.has(key)) {
+                addedKeys.add(key);
+                restDays.push({
+                  date: new Date(restDate),
+                  clinicianId,
+                  session,
+                  dutyId: null,  // OFF
+                  isOff: true
+                });
+              }
+            }
+          }
+        }
+      } else if (dayOfWeek >= 1 && dayOfWeek <= 4) {
+        // Mon-Thu on-call -> Next day AM = SPA, PM = OFF
+        const nextDay = new Date(date);
+        nextDay.setDate(nextDay.getDate() + 1);
+
+        if (nextDay >= from && nextDay <= to) {
+          // AM session = SPA duty
+          const amKey = restDayKey(nextDay, clinicianId, 'AM');
+          if (!addedKeys.has(amKey)) {
+            addedKeys.add(amKey);
+            restDays.push({
+              date: new Date(nextDay),
+              clinicianId,
+              session: 'AM',
+              dutyId: spaDuty?.id ?? null,
+              isOff: false  // SPA is not OFF, it's a duty
+            });
+          }
+
+          // PM session = OFF
+          const pmKey = restDayKey(nextDay, clinicianId, 'PM');
+          if (!addedKeys.has(pmKey)) {
+            addedKeys.add(pmKey);
+            restDays.push({
+              date: new Date(nextDay),
+              clinicianId,
+              session: 'PM',
+              dutyId: null,
+              isOff: true
+            });
+          }
+        }
+      }
+      // Friday (dayOfWeek === 5) or Sunday (dayOfWeek === 7): No rest day needed
+    }
+  }
+
+  return restDays;
+}
+
 export async function generateRota(from: Date, to: Date) {
   const clinicians = await prisma.clinician.findMany({ where: { active: true }, include: { jobPlanWeeks: true } });
 
@@ -172,6 +281,33 @@ export async function generateRota(from: Date, to: Date) {
   console.log('  - Cycle length:', registrarConfig?.cycleLength ?? 'NOT SET');
   console.log('===========================');
 
+  // ============================================
+  // Compute rest days for registrars
+  // ============================================
+  const spaDuty = await prisma.duty.findFirst({
+    where: { name: { contains: 'SPA' }, active: true }
+  });
+  const registrarClinicianIds = clinicians
+    .filter(c => c.role === 'registrar')
+    .map(c => c.id);
+
+  const restDays = computeRestDaysForRegistrars(
+    from, to, registrarData, registrarClinicianIds, spaDuty
+  );
+
+  // Build rest day lookup map: "YYYY-MM-DD-clinicianId-session" -> RestDayEntry
+  const restDayLookup = new Map<string, RestDayEntry>();
+  for (const restDay of restDays) {
+    const key = `${toDateString(restDay.date)}-${restDay.clinicianId}-${restDay.session}`;
+    restDayLookup.set(key, restDay);
+  }
+
+  console.log('=== REST DAYS DEBUG ===');
+  console.log('  - SPA duty:', spaDuty ? `${spaDuty.name} (id=${spaDuty.id})` : 'NOT FOUND');
+  console.log('  - Registrar IDs:', registrarClinicianIds.join(', '));
+  console.log('  - Rest days computed:', restDays.length);
+  console.log('=======================');
+
   for (const date of dateRange(from, to)) {
     const weekNo = Math.min(5, Math.max(1, weekOfMonth(date)));
     const dayOfWeek = getDayOfWeek(date);
@@ -194,7 +330,7 @@ export async function generateRota(from: Date, to: Date) {
         const existing = await prisma.rotaEntry.findUnique({
           where: { date_clinicianId_session: { date, clinicianId: clinician.id, session } }
         });
-        if (existing && (existing.source === 'manual' || existing.source === 'leave')) {
+        if (existing && (existing.source === 'manual' || existing.source === 'leave' || existing.source === 'rest')) {
           continue;
         }
         // leave overrides everything
@@ -219,6 +355,26 @@ export async function generateRota(from: Date, to: Date) {
             }
             continue;
           }
+        }
+
+        // Rest days for registrars (from on-call recovery)
+        const restKey = `${toDateString(date)}-${clinician.id}-${session}`;
+        const restEntry = restDayLookup.get(restKey);
+        if (restEntry && clinician.role === 'registrar') {
+          const payload = {
+            date,
+            clinicianId: clinician.id,
+            session,
+            source: 'rest' as RotaSource,
+            isOncall: false,
+            dutyId: restEntry.dutyId  // SPA duty for AM after weekday on-call, null for OFF
+          };
+          if (existing) {
+            await prisma.rotaEntry.update({ where: { id: existing.id }, data: payload });
+          } else {
+            await prisma.rotaEntry.create({ data: payload });
+          }
+          continue;
         }
 
         // on-call overrides duty when this clinician is scheduled for on-call

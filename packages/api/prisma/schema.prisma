@@ -11,7 +11,7 @@ datasource db {
 // ClinicianRole: "consultant" | "registrar"
 // RegistrarGrade: "junior" | "senior"
 // Session: "AM" | "PM" | "FULL"
-// RotaSource: "jobplan" | "oncall" | "manual" | "leave"
+// RotaSource: "jobplan" | "oncall" | "manual" | "leave" | "rest"
 // LeaveType: "annual" | "study" | "sick" | "professional"
 // CoverageReason: "leave" | "oncall_conflict" | "manual"
 // CoverageStatus: "pending" | "assigned" | "cancelled"
