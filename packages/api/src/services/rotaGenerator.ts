@@ -23,28 +23,17 @@ function getDayOfWeek(date: Date): number {
   return jsDay === 0 ? 7 : jsDay;
 }
 
-// DEPRECATED: Old on-call slot picker - keeping for backwards compatibility during migration
-function pickOncallSlot(
-  date: Date,
-  role: 'consultant' | 'registrar',
-  cycle: { cycleLength: number; clinicianId: number; position: number; startDate: Date | null }[]
-) {
-  if (!cycle.length) return null;
-  const anchor = cycle[0].startDate ?? new Date('2024-01-01');
-  const unitDays = role === 'consultant' ? 7 : 1; // consultants rotate weekly, registrars daily
-  const diffUnits = Math.floor((date.getTime() - anchor.getTime()) / (1000 * 60 * 60 * 24 * unitDays));
-  const length = cycle[0].cycleLength;
-  const idx = ((diffUnits % length) + length) % length; // handle negatives
-  const slot = cycle.find((s) => s.position === idx + 1);
-  return slot?.clinicianId ?? null;
-}
-
-// NEW: Slot-based on-call clinician picker
+// Slot-based on-call clinician picker
 interface SlotBasedData {
   config: OnCallConfig | null;
   slots: OnCallSlot[];
   patterns: OnCallPattern[];  // Only for registrars
   assignments: SlotAssignment[];
+}
+
+// Helper to extract YYYY-MM-DD from a Date object (timezone-safe)
+function toDateString(d: Date): string {
+  return d.toISOString().split('T')[0];
 }
 
 function pickOncallClinicianSlotBased(
@@ -56,10 +45,14 @@ function pickOncallClinicianSlotBased(
 
   if (!config || slots.length === 0) return null;
 
-  // Calculate days since start date
-  const daysSinceStart = Math.floor(
-    (date.getTime() - config.startDate.getTime()) / (1000 * 60 * 60 * 24)
-  );
+  // Use string-based date comparison to avoid timezone issues
+  const dateStr = toDateString(date);
+  const startDateStr = toDateString(config.startDate);
+
+  // Calculate days difference using UTC timestamps of midnight
+  const dateMs = Date.parse(dateStr + 'T00:00:00Z');
+  const startDateMs = Date.parse(startDateStr + 'T00:00:00Z');
+  const daysSinceStart = Math.round((dateMs - startDateMs) / (1000 * 60 * 60 * 24));
 
   let slotId: number;
 
@@ -78,7 +71,11 @@ function pickOncallClinicianSlotBased(
     if (patterns.length > 0) {
       // Explicit pattern configured - use it
       const pattern = patterns.find(p => p.dayOfCycle === dayOfCycle);
-      if (!pattern) return null;
+      if (!pattern) {
+        // Log missing pattern for debugging
+        console.log(`[Registrar] No pattern found for dayOfCycle=${dayOfCycle}, date=${dateStr}`);
+        return null;
+      }
       slotId = pattern.slotId;
     } else {
       // No explicit pattern - use implicit round-robin (like consultants but daily)
@@ -90,12 +87,20 @@ function pickOncallClinicianSlotBased(
     }
   }
 
-  // Find active assignment for this slot on this date
-  const assignment = assignments.find(a =>
-    a.slotId === slotId &&
-    a.effectiveFrom <= date &&
-    (a.effectiveTo === null || a.effectiveTo >= date)
-  );
+  // Find active assignment for this slot on this date - use string comparison
+  const assignment = assignments.find(a => {
+    if (a.slotId !== slotId) return false;
+
+    const fromStr = toDateString(a.effectiveFrom);
+    const toStr = a.effectiveTo ? toDateString(a.effectiveTo) : '9999-12-31';
+
+    return fromStr <= dateStr && toStr >= dateStr;
+  });
+
+  // Debug log for first day of each month (to avoid flooding)
+  if (role === 'registrar' && date.getDate() === 1) {
+    console.log(`[Registrar] Date ${dateStr}: daysSinceStart=${daysSinceStart}, slotId=${slotId}, assignment=${assignment ? `clinician ${assignment.clinicianId}` : 'NONE'}`);
+  }
 
   return assignment?.clinicianId ?? null;
 }
@@ -154,33 +159,18 @@ export async function generateRota(from: Date, to: Date) {
     assignments: registrarAssignments
   };
 
-  // Check if slot-based system is set up PER ROLE
-  // Consultants: use slot-based if consultant slots exist (implicit pattern: week N = slot N)
-  // Registrars: use slot-based if registrar slots exist (uses explicit pattern if configured, otherwise implicit round-robin)
-  const useSlotBasedConsultants = consultantSlots.length > 0 && consultantConfig !== null;
-  const useSlotBasedRegistrars = registrarSlots.length > 0 && registrarConfig !== null;
-
   // Debug logging for troubleshooting
-  console.log('[Rota Generator] Registrar debug:', {
-    registrarSlotsCount: registrarSlots.length,
-    registrarSlotIds: registrarSlots.map(s => ({ id: s.id, position: s.position })),
-    registrarPatternsCount: registrarPatterns.length,
-    registrarPatternSample: registrarPatterns.slice(0, 3).map(p => ({ dayOfCycle: p.dayOfCycle, slotId: p.slotId })),
-    registrarAssignmentsCount: registrarAssignments.length,
-    registrarAssignmentDetails: registrarAssignments.map(a => ({
-      slotId: a.slotId,
-      clinicianId: a.clinicianId,
-      from: a.effectiveFrom,
-      to: a.effectiveTo
-    })),
-    registrarConfigStartDate: registrarConfig?.startDate,
-    useSlotBasedRegistrars,
+  console.log('=== ROTA GENERATOR DEBUG ===');
+  console.log('Registrar setup:');
+  console.log('  - Slots:', registrarSlots.length, registrarSlots.map(s => `Slot ${s.position} (id=${s.id})`).join(', '));
+  console.log('  - Patterns:', registrarPatterns.length, registrarPatterns.length > 0 ? `(days 1-${Math.max(...registrarPatterns.map(p => p.dayOfCycle))})` : '(using implicit)');
+  console.log('  - Assignments:', registrarAssignments.length);
+  registrarAssignments.forEach(a => {
+    console.log(`    - Slot ${a.slotId} -> Clinician ${a.clinicianId} (${a.effectiveFrom.toISOString().split('T')[0]} to ${a.effectiveTo?.toISOString().split('T')[0] ?? 'ongoing'})`);
   });
-
-  // DEPRECATED: Old system fallback (used when slot-based not configured for a role)
-  const cycles = await prisma.oncallCycle.findMany();
-  const consultantCycle = cycles.filter((c) => c.role === 'consultant');
-  const registrarCycle = cycles.filter((c) => c.role === 'registrar');
+  console.log('  - Config start date:', registrarConfig?.startDate?.toISOString().split('T')[0] ?? 'NOT SET');
+  console.log('  - Cycle length:', registrarConfig?.cycleLength ?? 'NOT SET');
+  console.log('===========================');
 
   for (const date of dateRange(from, to)) {
     const weekNo = Math.min(5, Math.max(1, weekOfMonth(date)));
@@ -192,26 +182,13 @@ export async function generateRota(from: Date, to: Date) {
       const leave = leaves.find((l) => l.clinicianId === clinician.id);
       const sessions: Session[] = ['AM', 'PM'];
 
-      // Determine on-call clinician using slot-based or old system (per-role decision)
-      let oncallClinicianId: number | null;
+      // Determine on-call clinician using slot-based system
       const isConsultant = clinician.role === 'consultant';
-      const useSlotBased = isConsultant ? useSlotBasedConsultants : useSlotBasedRegistrars;
-
-      if (useSlotBased) {
-        // NEW: Use slot-based system
-        oncallClinicianId = pickOncallClinicianSlotBased(
-          date,
-          clinician.role as 'consultant' | 'registrar',
-          isConsultant ? consultantData : registrarData
-        );
-      } else {
-        // DEPRECATED: Fall back to old system
-        oncallClinicianId = pickOncallSlot(
-          date,
-          clinician.role as 'consultant' | 'registrar',
-          isConsultant ? consultantCycle : registrarCycle
-        );
-      }
+      const oncallClinicianId = pickOncallClinicianSlotBased(
+        date,
+        clinician.role as 'consultant' | 'registrar',
+        isConsultant ? consultantData : registrarData
+      );
 
       for (const session of sessions) {
         const existing = await prisma.rotaEntry.findUnique({

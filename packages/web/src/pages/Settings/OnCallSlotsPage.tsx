@@ -81,8 +81,28 @@ const fetchData = async () => {
   };
 };
 
-// Day of week labels for 49-day pattern display
-const DAY_LABELS = ['Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu'];
+// Day of week labels - will be computed dynamically based on start date
+const ALL_DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Helper to get day labels starting from a specific date
+function getDayLabelsFromDate(startDateStr: string): string[] {
+  const date = new Date(startDateStr + 'T00:00:00');
+  const startDayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  const labels: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const dayIdx = (startDayOfWeek + i) % 7;
+    labels.push(ALL_DAY_LABELS[dayIdx]);
+  }
+  return labels;
+}
+
+// Helper to check if a day index (0-6) within a week is a weekend
+function isWeekendDay(dayIdx: number, startDateStr: string): boolean {
+  const date = new Date(startDateStr + 'T00:00:00');
+  const startDayOfWeek = date.getDay();
+  const actualDayOfWeek = (startDayOfWeek + dayIdx) % 7;
+  return actualDayOfWeek === 0 || actualDayOfWeek === 6; // Sunday = 0, Saturday = 6
+}
 
 export const OnCallSlotsPage: React.FC = () => {
   const qc = useQueryClient();
@@ -597,6 +617,9 @@ export const OnCallSlotsPage: React.FC = () => {
     const cycleLen = data.slots.registrar.length * 7;
     const numWeeks = data.slots.registrar.length;
 
+    // Get dynamic day labels based on start date
+    const dayLabels = getDayLabelsFromDate(regStartDate);
+
     // Group pattern by weeks (7 days each)
     const weeks: { dayOfCycle: number; slotPosition: number }[][] = [];
     for (let i = 0; i < numWeeks; i++) {
@@ -706,7 +729,7 @@ export const OnCallSlotsPage: React.FC = () => {
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th style={{ width: 80 }}>Week</Table.Th>
-                    {DAY_LABELS.map((day) => (
+                    {dayLabels.map((day) => (
                       <Table.Th key={day} style={{ textAlign: 'center' }}>
                         {day}
                       </Table.Th>
@@ -725,7 +748,7 @@ export const OnCallSlotsPage: React.FC = () => {
                         const slotName =
                           data?.slots.registrar.find((s) => s.position === day.slotPosition)?.name ||
                           `Slot ${day.slotPosition}`;
-                        const isWeekend = dayIdx === 1 || dayIdx === 2; // Sat, Sun
+                        const isWeekend = isWeekendDay(dayIdx, regStartDate);
                         return (
                           <Table.Td
                             key={day.dayOfCycle}
@@ -775,6 +798,7 @@ export const OnCallSlotsPage: React.FC = () => {
   // Pattern Editor Modal
   const renderPatternModal = () => {
     const cycleLen = (data?.slots.registrar.length ?? 0) * 7;
+    const modalDayLabels = getDayLabelsFromDate(regStartDate);
     return (
     <Modal
       opened={patternModalOpen}
@@ -801,7 +825,7 @@ export const OnCallSlotsPage: React.FC = () => {
                 </Table.Td>
                 <Table.Td>
                   <Text size="sm" c="dimmed">
-                    {DAY_LABELS[idx % 7]}
+                    {modalDayLabels[idx % 7]}
                   </Text>
                 </Table.Td>
                 <Table.Td>

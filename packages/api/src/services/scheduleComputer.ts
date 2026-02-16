@@ -1,4 +1,5 @@
 import { prisma } from '../prisma.js';
+import type { OnCallConfig, OnCallSlot, OnCallPattern, SlotAssignment } from '@prisma/client';
 
 type Session = 'AM' | 'PM';
 
@@ -18,6 +19,14 @@ interface ScheduleEntry {
   manualOverrideId: number | null; // RotaEntry id if manually overridden
   supportingClinicianId: number | null;
   supportingClinicianName: string | null;
+}
+
+// Slot-based on-call data structure
+interface SlotBasedData {
+  config: OnCallConfig | null;
+  slots: OnCallSlot[];
+  patterns: OnCallPattern[];
+  assignments: SlotAssignment[];
 }
 
 function formatDateString(date: Date): string {
@@ -48,28 +57,83 @@ function getDayOfWeek(date: Date): number {
   return jsDay === 0 ? 7 : jsDay;
 }
 
-function computeOncallClinicianId(
+// Slot-based on-call clinician picker
+function computeOncallClinicianSlotBased(
   date: Date,
   role: 'consultant' | 'registrar',
-  cycles: { cycleLength: number; clinicianId: number; position: number; startDate: Date | null }[]
+  data: SlotBasedData
 ): number | null {
-  if (!cycles.length) return null;
-  const anchor = cycles[0].startDate ?? new Date('2024-01-01');
-  const unitDays = role === 'consultant' ? 7 : 1; // consultants rotate weekly, registrars daily
-  const diffMs = date.getTime() - anchor.getTime();
-  const diffUnits = Math.floor(diffMs / (1000 * 60 * 60 * 24 * unitDays));
-  const length = cycles[0].cycleLength;
-  const idx = ((diffUnits % length) + length) % length; // handle negatives
-  const slot = cycles.find((s) => s.position === idx + 1);
-  return slot?.clinicianId ?? null;
+  const { config, slots, patterns, assignments } = data;
+
+  if (!config || slots.length === 0) return null;
+
+  // Use string-based date comparison to avoid timezone issues
+  const dateStr = formatDateString(date);
+  const startDateStr = formatDateString(config.startDate);
+
+  // Calculate days difference using UTC timestamps of midnight
+  const dateMs = Date.parse(dateStr + 'T00:00:00Z');
+  const startDateMs = Date.parse(startDateStr + 'T00:00:00Z');
+  const daysSinceStart = Math.round((dateMs - startDateMs) / (1000 * 60 * 60 * 24));
+
+  let slotId: number;
+
+  if (role === 'consultant') {
+    // Consultants: week N = slot with position N (implicit pattern)
+    const weeksSinceStart = Math.floor(daysSinceStart / 7);
+    const weekOfCycle = ((weeksSinceStart % config.cycleLength) + config.cycleLength) % config.cycleLength;
+    const position = weekOfCycle + 1; // 1-indexed
+    const slot = slots.find(s => s.position === position);
+    if (!slot) return null;
+    slotId = slot.id;
+  } else {
+    // Registrars: use explicit pattern if available, otherwise implicit round-robin
+    const dayOfCycle = ((daysSinceStart % config.cycleLength) + config.cycleLength) % config.cycleLength + 1;
+
+    if (patterns.length > 0) {
+      // Explicit pattern configured - use it
+      const pattern = patterns.find(p => p.dayOfCycle === dayOfCycle);
+      if (!pattern) return null;
+      slotId = pattern.slotId;
+    } else {
+      // No explicit pattern - use implicit round-robin (like consultants but daily)
+      const position = ((dayOfCycle - 1) % slots.length) + 1;
+      const slot = slots.find(s => s.position === position);
+      if (!slot) return null;
+      slotId = slot.id;
+    }
+  }
+
+  // Find active assignment for this slot on this date
+  const assignment = assignments.find(a => {
+    if (a.slotId !== slotId) return false;
+
+    const fromStr = formatDateString(a.effectiveFrom);
+    const toStr = a.effectiveTo ? formatDateString(a.effectiveTo) : '9999-12-31';
+
+    return fromStr <= dateStr && toStr >= dateStr;
+  });
+
+  return assignment?.clinicianId ?? null;
 }
 
 export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEntry[]> {
-  // Fetch all required data
-  const [clinicians, jobPlans, oncallCycles, leaves, manualOverrides, duties, coverageAssignments] = await Promise.all([
+  // Fetch all required data including slot-based on-call data
+  const [
+    clinicians,
+    jobPlans,
+    leaves,
+    manualOverrides,
+    duties,
+    coverageAssignments,
+    // Slot-based on-call data
+    oncallConfigs,
+    oncallSlots,
+    oncallPatterns,
+    oncallAssignments
+  ] = await Promise.all([
     prisma.clinician.findMany({ where: { active: true }, orderBy: [{ role: 'asc' }, { name: 'asc' }] }),
     prisma.jobPlanWeek.findMany({ include: { amDuty: true, pmDuty: true } }),
-    prisma.oncallCycle.findMany(),
     prisma.leave.findMany({
       where: {
         date: { gte: from, lte: to }
@@ -91,8 +155,44 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
         assignedRegistrarId: { not: null }
       },
       include: { duty: true, consultant: true }
+    }),
+    // Slot-based on-call data
+    prisma.onCallConfig.findMany(),
+    prisma.onCallSlot.findMany({ where: { active: true } }),
+    prisma.onCallPattern.findMany({ where: { role: 'registrar' } }),
+    prisma.slotAssignment.findMany({
+      where: {
+        effectiveFrom: { lte: to },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: from } }]
+      }
     })
   ]);
+
+  // Build slot-based data structures
+  const consultantConfig = oncallConfigs.find(c => c.role === 'consultant') ?? null;
+  const registrarConfig = oncallConfigs.find(c => c.role === 'registrar') ?? null;
+  const consultantSlots = oncallSlots.filter(s => s.role === 'consultant');
+  const registrarSlots = oncallSlots.filter(s => s.role === 'registrar');
+  const consultantAssignments = oncallAssignments.filter(a =>
+    consultantSlots.some(s => s.id === a.slotId)
+  );
+  const registrarAssignments = oncallAssignments.filter(a =>
+    registrarSlots.some(s => s.id === a.slotId)
+  );
+
+  const consultantData: SlotBasedData = {
+    config: consultantConfig,
+    slots: consultantSlots,
+    patterns: [], // Consultants don't use patterns
+    assignments: consultantAssignments
+  };
+
+  const registrarData: SlotBasedData = {
+    config: registrarConfig,
+    slots: registrarSlots,
+    patterns: oncallPatterns,
+    assignments: registrarAssignments
+  };
 
   // Build clinician lookup for names
   const clinicianMap = new Map<number, { name: string; role: string }>();
@@ -119,8 +219,15 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
     });
   });
 
-  const consultantCycles = oncallCycles.filter((c) => c.role === 'consultant');
-  const registrarCycles = oncallCycles.filter((c) => c.role === 'registrar');
+  // Helper function to compute on-call for a specific date and role (slot-based only)
+  const getOncallClinicianId = (date: Date, role: 'consultant' | 'registrar'): number | null => {
+    const isConsultant = role === 'consultant';
+    return computeOncallClinicianSlotBased(
+      date,
+      role,
+      isConsultant ? consultantData : registrarData
+    );
+  };
 
   // Leave lookup: clinicianId-date -> Leave
   const leaveMap = new Map<string, { session: string; type: string }>();
@@ -169,9 +276,9 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
     const dayOfWeek = getDayOfWeek(date);
     const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
 
-    // Calculate who's on-call today
-    const oncallConsultantId = computeOncallClinicianId(date, 'consultant', consultantCycles);
-    const oncallRegistrarId = computeOncallClinicianId(date, 'registrar', registrarCycles);
+    // Calculate who's on-call today (uses slot-based if available, otherwise old cycles)
+    const oncallConsultantId = getOncallClinicianId(date, 'consultant');
+    const oncallRegistrarId = getOncallClinicianId(date, 'registrar');
 
     for (const clinician of clinicians) {
       const sessions: Session[] = ['AM', 'PM'];
@@ -331,16 +438,54 @@ export async function getTodayOncall(): Promise<{
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [oncallCycles, clinicians] = await Promise.all([
-    prisma.oncallCycle.findMany(),
-    prisma.clinician.findMany({ where: { active: true }, orderBy: [{ role: 'asc' }, { name: 'asc' }] })
+  const [
+    clinicians,
+    oncallConfigs,
+    oncallSlots,
+    oncallPatterns,
+    oncallAssignments
+  ] = await Promise.all([
+    prisma.clinician.findMany({ where: { active: true }, orderBy: [{ role: 'asc' }, { name: 'asc' }] }),
+    prisma.onCallConfig.findMany(),
+    prisma.onCallSlot.findMany({ where: { active: true } }),
+    prisma.onCallPattern.findMany({ where: { role: 'registrar' } }),
+    prisma.slotAssignment.findMany({
+      where: {
+        effectiveFrom: { lte: today },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: today } }]
+      }
+    })
   ]);
 
-  const consultantCycles = oncallCycles.filter((c) => c.role === 'consultant');
-  const registrarCycles = oncallCycles.filter((c) => c.role === 'registrar');
+  // Build slot-based data structures
+  const consultantConfig = oncallConfigs.find(c => c.role === 'consultant') ?? null;
+  const registrarConfig = oncallConfigs.find(c => c.role === 'registrar') ?? null;
+  const consultantSlots = oncallSlots.filter(s => s.role === 'consultant');
+  const registrarSlots = oncallSlots.filter(s => s.role === 'registrar');
+  const consultantAssignments = oncallAssignments.filter(a =>
+    consultantSlots.some(s => s.id === a.slotId)
+  );
+  const registrarAssignments = oncallAssignments.filter(a =>
+    registrarSlots.some(s => s.id === a.slotId)
+  );
 
-  const oncallConsultantId = computeOncallClinicianId(today, 'consultant', consultantCycles);
-  const oncallRegistrarId = computeOncallClinicianId(today, 'registrar', registrarCycles);
+  const consultantData: SlotBasedData = {
+    config: consultantConfig,
+    slots: consultantSlots,
+    patterns: [],
+    assignments: consultantAssignments
+  };
+
+  const registrarData: SlotBasedData = {
+    config: registrarConfig,
+    slots: registrarSlots,
+    patterns: oncallPatterns,
+    assignments: registrarAssignments
+  };
+
+  // Calculate on-call IDs using slot-based system
+  const oncallConsultantId = computeOncallClinicianSlotBased(today, 'consultant', consultantData);
+  const oncallRegistrarId = computeOncallClinicianSlotBased(today, 'registrar', registrarData);
 
   const consultant = clinicians.find((c) => c.id === oncallConsultantId);
   const registrar = clinicians.find((c) => c.id === oncallRegistrarId);
