@@ -12,11 +12,12 @@ Rotato helps clinical teams manage their on-call rotas and duty schedules. It's 
 
 ### Key Features
 
-- **On-Call Schedules** — Set up rotating on-call patterns for consultants and registrars
+- **On-Call Schedules** — Set up rotating on-call patterns for consultants and registrars using a slot-based system
 - **Job Plans** — Define weekly duty templates (clinics, theatres, admin) that repeat automatically
 - **Supporting Clinicians** — Link registrars to the consultants they're supporting for each clinic/theatre
-- **Leave Management** — Track annual leave, study leave, and sick days
-- **Coverage Suggestions** — When a registrar is on leave, get smart suggestions for who can cover
+- **Leave Management** — Track annual leave, study leave, sick days, and professional leave with colour-coded calendar display
+- **Rest Days** — Automatic rest day calculation for registrars after on-call shifts
+- **Coverage Suggestions** — When a registrar is on leave, get smart suggestions for who can cover (auto-cleanup when leave is cancelled)
 - **Shareable Calendar** — Generate a link anyone can view (no login required)
 - **iCal Feed** — Sync with Google Calendar, Outlook, or your phone
 
@@ -97,11 +98,13 @@ Job plans define what each clinician does on each day of the week, repeating on 
 
 ### Setting Up On-Call Rotas
 
-1. Go to **Settings** → **On-Call Cycles**
-2. Create a cycle (e.g., "Consultant Weekend On-Call")
-3. Set the cycle length (e.g., 7 weeks for 7 consultants)
-4. Add each clinician to their slot in the rotation
-5. The system will automatically calculate who's on call for any date
+1. Go to **Settings** → **On-Call Slots**
+2. You'll see slots for consultants (7-week cycle) and registrars (49-day cycle)
+3. Assign clinicians to their slots using the dropdown
+4. When staff change, simply update the assignment — the rotation pattern stays the same
+5. The system automatically calculates who's on call for any date
+
+> **Tip:** The slot-based system means when someone leaves or joins, you only need to update their slot assignment. The underlying rotation pattern remains unchanged.
 
 ### Recording Leave
 
@@ -109,7 +112,9 @@ Job plans define what each clinician does on each day of the week, repeating on 
 2. Click **Add Leave**
 3. Select the clinician and date range
 4. Choose the type: Annual, Study, Sick, or Professional
-5. The calendar will show them as unavailable
+5. The calendar will show them as unavailable with colour-coded leave:
+   - **Red** — Annual Leave, Sick Leave
+   - **Purple** — Study Leave, Professional Leave
 
 ### Managing Coverage
 
@@ -120,6 +125,8 @@ When a registrar goes on leave, their supporting consultant may need cover. Rota
 3. Click on a request to see suggested registrars who are available
 4. Assign a registrar to provide cover, or use **Auto-Assign** for smart suggestions
 5. The suggestions consider workload balance and availability
+
+> **Note:** If a leave is cancelled, any associated coverage requests are automatically removed.
 
 ### Sharing the Rota
 
@@ -136,7 +143,13 @@ When a registrar goes on leave, their supporting consultant may need cover. Rota
 A: Currently, Rotato has a single admin account. Multiple admin support is planned for a future release.
 
 **Q: What happens if a registrar is on leave?**
-A: Rotato automatically creates a coverage request for any clinic/theatre they were supporting. Go to **Settings** → **Coverage** to see pending requests and assign cover.
+A: Rotato automatically creates a coverage request for any clinic/theatre they were supporting. Go to **Settings** → **Coverage** to see pending requests and assign cover. If the leave is cancelled, the coverage request is automatically removed.
+
+**Q: What are rest days?**
+A: After on-call shifts, registrars automatically get rest days:
+- **Weekend on-call (Saturday):** Friday off, Monday off, Tuesday off
+- **Weekday on-call (Mon-Thu):** Next day AM = SPA, PM = off
+- These appear automatically in the calendar.
 
 **Q: How do I know which registrar to assign for cover?**
 A: Rotato suggests available registrars based on who's free that day. It considers workload balance so no one gets overloaded.

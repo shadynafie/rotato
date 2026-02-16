@@ -44,21 +44,36 @@ npm run lint
 
 ### Rota Generation Logic
 1. Job plans define Week 1-5 templates per clinician (AM/PM duties)
-2. On-call cycles define rolling schedules per role (consultant/registrar)
+2. On-call uses slot-based system: abstract slots (Registrar 01-07, Consultant 01-07) with assignments
 3. Generator projects templates onto dates, creating RotaEntry records
-4. Entries with `source='manual'` or `source='leave'` are never overwritten
+4. Entries with `source='manual'`, `source='leave'`, or `source='rest'` are never overwritten
 5. `session` can be 'AM', 'PM', or 'FULL' (on-call spans full day)
+6. Registrar rest days are auto-calculated based on on-call (weekend → Fri/Mon/Tue off, weekday → next day AM=SPA, PM=off)
+
+### Slot-Based On-Call System
+- **OnCallSlot**: Abstract positions (Registrar 01-07, Consultant 01-07)
+- **SlotAssignment**: Maps clinicians to slots with `effectiveFrom`/`effectiveTo` date ranges
+- **OnCallConfig**: Role-level config (cycle length, start date)
+- **OnCallPattern**: Explicit 49-day pattern for registrars (consultants use implicit week-position mapping)
+- Staff changes only require updating assignments; patterns remain stable
 
 ## Data Model Key Points
 
 SQLite doesn't support enums, so these are stored as strings:
 - `ClinicianRole`: 'consultant' | 'registrar'
 - `Session`: 'AM' | 'PM' | 'FULL'
-- `RotaSource`: 'jobplan' | 'oncall' | 'manual' | 'leave'
+- `RotaSource`: 'jobplan' | 'oncall' | 'manual' | 'leave' | 'rest'
 - `LeaveType`: 'annual' | 'study' | 'sick' | 'professional'
+- `CoverageReason`: 'leave' | 'oncall_conflict' | 'manual'
 - JSON fields (payload, before, after) are stored as serialized strings
 
 RotaEntry uniqueness: `[date, clinicianId, session]`
+
+### Coverage Request System
+- Auto-created when registrar takes leave and was supporting a consultant
+- `absentRegistrarId` tracks which registrar's absence caused the coverage need
+- Auto-deleted when the associated leave is cancelled
+- Cleanup endpoint: `POST /api/coverage/cleanup-orphaned` removes orphaned requests
 
 ## Environment
 
@@ -86,7 +101,17 @@ Use these instead of inline implementations:
 ### Constants (`packages/web/src/utils/constants.ts`)
 - `LEAVE_TYPES` - Options for leave type selects
 - `SESSIONS` - Options for session selects (FULL, AM, PM)
-- `COLORS` - Semantic colors (primary, oncall, leave, etc.)
+- `COLORS` - Semantic colors (primary, oncall, leave, leaveStudy, etc.)
+- `getLeaveColors(leaveType)` - Returns color/bg for leave type (red for annual/sick, purple for study/professional)
+
+### Date Helpers (`packages/api/src/utils/dateHelpers.ts` & `packages/web/src/utils/dateHelpers.ts`)
+Shared date utilities to avoid duplication:
+- `formatDateString(date)` / `getDateString(date)` - Format to YYYY-MM-DD
+- `weekOfMonth(date)` - Week 1-5 for job plan matching
+- `getDayOfWeek(date)` - Monday=1 to Sunday=7
+- `isWeekday(date)` - True for Mon-Fri
+- `dateRange(from, to)` - Generator yielding dates in range
+- Web package has string-based variants (`addDaysStr`, `getWeekStartStr`, etc.) for timezone safety
 
 ### API Formatters (`packages/api/src/utils/formatters.ts`)
 Backend versions of `getSurname`, `formatLeaveLabel`, `formatDutyDisplay` for iCal generation.
