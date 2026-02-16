@@ -1,5 +1,6 @@
 import { prisma } from '../prisma.js';
 import type { Session, RotaSource } from '../types/enums.js';
+import type { OnCallConfig, OnCallSlot, OnCallPattern, SlotAssignment } from '@prisma/client';
 
 function* dateRange(start: Date, end: Date) {
   const current = new Date(start);
@@ -22,6 +23,7 @@ function getDayOfWeek(date: Date): number {
   return jsDay === 0 ? 7 : jsDay;
 }
 
+// DEPRECATED: Old on-call slot picker - keeping for backwards compatibility during migration
 function pickOncallSlot(
   date: Date,
   role: 'consultant' | 'registrar',
@@ -35,6 +37,56 @@ function pickOncallSlot(
   const idx = ((diffUnits % length) + length) % length; // handle negatives
   const slot = cycle.find((s) => s.position === idx + 1);
   return slot?.clinicianId ?? null;
+}
+
+// NEW: Slot-based on-call clinician picker
+interface SlotBasedData {
+  config: OnCallConfig | null;
+  slots: OnCallSlot[];
+  patterns: OnCallPattern[];  // Only for registrars
+  assignments: SlotAssignment[];
+}
+
+function pickOncallClinicianSlotBased(
+  date: Date,
+  role: 'consultant' | 'registrar',
+  data: SlotBasedData
+): number | null {
+  const { config, slots, patterns, assignments } = data;
+
+  if (!config || slots.length === 0) return null;
+
+  // Calculate days since start date
+  const daysSinceStart = Math.floor(
+    (date.getTime() - config.startDate.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  let slotId: number;
+
+  if (role === 'consultant') {
+    // Consultants: week N = slot with position N
+    const weeksSinceStart = Math.floor(daysSinceStart / 7);
+    const weekOfCycle = ((weeksSinceStart % config.cycleLength) + config.cycleLength) % config.cycleLength;
+    const position = weekOfCycle + 1; // 1-indexed
+    const slot = slots.find(s => s.position === position);
+    if (!slot) return null;
+    slotId = slot.id;
+  } else {
+    // Registrars: look up explicit pattern
+    const dayOfCycle = ((daysSinceStart % config.cycleLength) + config.cycleLength) % config.cycleLength + 1;
+    const pattern = patterns.find(p => p.dayOfCycle === dayOfCycle);
+    if (!pattern) return null;
+    slotId = pattern.slotId;
+  }
+
+  // Find active assignment for this slot on this date
+  const assignment = assignments.find(a =>
+    a.slotId === slotId &&
+    a.effectiveFrom <= date &&
+    (a.effectiveTo === null || a.effectiveTo >= date)
+  );
+
+  return assignment?.clinicianId ?? null;
 }
 
 export async function generateRota(from: Date, to: Date) {
@@ -51,6 +103,50 @@ export async function generateRota(from: Date, to: Date) {
     jobPlanByClinician.set(c.id, map);
   });
 
+  // ============================================
+  // NEW: Fetch slot-based on-call data
+  // ============================================
+  const configs = await prisma.onCallConfig.findMany();
+  const consultantConfig = configs.find(c => c.role === 'consultant') ?? null;
+  const registrarConfig = configs.find(c => c.role === 'registrar') ?? null;
+
+  const allSlots = await prisma.onCallSlot.findMany({ where: { active: true } });
+  const consultantSlots = allSlots.filter(s => s.role === 'consultant');
+  const registrarSlots = allSlots.filter(s => s.role === 'registrar');
+
+  const registrarPatterns = await prisma.onCallPattern.findMany({ where: { role: 'registrar' } });
+
+  const allAssignments = await prisma.slotAssignment.findMany({
+    where: {
+      effectiveFrom: { lte: to },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: from } }]
+    }
+  });
+  const consultantAssignments = allAssignments.filter(a =>
+    consultantSlots.some(s => s.id === a.slotId)
+  );
+  const registrarAssignments = allAssignments.filter(a =>
+    registrarSlots.some(s => s.id === a.slotId)
+  );
+
+  const consultantData: SlotBasedData = {
+    config: consultantConfig,
+    slots: consultantSlots,
+    patterns: [],  // Consultants don't use patterns
+    assignments: consultantAssignments
+  };
+
+  const registrarData: SlotBasedData = {
+    config: registrarConfig,
+    slots: registrarSlots,
+    patterns: registrarPatterns,
+    assignments: registrarAssignments
+  };
+
+  // Check if slot-based system is set up (has slots and assignments)
+  const useSlotBasedSystem = consultantSlots.length > 0 || registrarSlots.length > 0;
+
+  // DEPRECATED: Old system fallback
   const cycles = await prisma.oncallCycle.findMany();
   const consultantCycle = cycles.filter((c) => c.role === 'consultant');
   const registrarCycle = cycles.filter((c) => c.role === 'registrar');
@@ -64,11 +160,24 @@ export async function generateRota(from: Date, to: Date) {
     for (const clinician of clinicians) {
       const leave = leaves.find((l) => l.clinicianId === clinician.id);
       const sessions: Session[] = ['AM', 'PM'];
-      const oncallClinicianId = pickOncallSlot(
-        date,
-        clinician.role as 'consultant' | 'registrar',
-        clinician.role === 'consultant' ? consultantCycle : registrarCycle
-      );
+
+      // Determine on-call clinician using slot-based or old system
+      let oncallClinicianId: number | null;
+      if (useSlotBasedSystem) {
+        // NEW: Use slot-based system
+        oncallClinicianId = pickOncallClinicianSlotBased(
+          date,
+          clinician.role as 'consultant' | 'registrar',
+          clinician.role === 'consultant' ? consultantData : registrarData
+        );
+      } else {
+        // DEPRECATED: Fall back to old system
+        oncallClinicianId = pickOncallSlot(
+          date,
+          clinician.role as 'consultant' | 'registrar',
+          clinician.role === 'consultant' ? consultantCycle : registrarCycle
+        );
+      }
 
       for (const session of sessions) {
         const existing = await prisma.rotaEntry.findUnique({

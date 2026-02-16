@@ -42,7 +42,8 @@ model Clinician {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   jobPlanWeeks    JobPlanWeek[]
-  oncallSlots     OncallCycle[]
+  oncallSlots     OncallCycle[]  // DEPRECATED: old on-call system
+  slotAssignments SlotAssignment[]  // NEW: slot-based on-call system
   rotaEntries     RotaEntry[]
   leaves          Leave[]
   notifications   Notification[]
@@ -82,6 +83,7 @@ model JobPlanWeek {
   @@unique([clinicianId, weekNo, dayOfWeek])
 }
 
+// DEPRECATED: Keep during migration, remove after slot-based system is complete
 model OncallCycle {
   id           Int      @id @default(autoincrement())
   role         String   // "consultant" | "registrar"
@@ -92,6 +94,65 @@ model OncallCycle {
   startDate    DateTime?
 
   @@unique([role, position])
+}
+
+// ============================================
+// NEW SLOT-BASED ON-CALL SYSTEM
+// ============================================
+
+// Abstract on-call positions (e.g., "Registrar 01", "Consultant 03")
+model OnCallSlot {
+  id          Int               @id @default(autoincrement())
+  name        String            // "Registrar 01", "Consultant 03"
+  role        String            // "consultant" | "registrar"
+  position    Int               // 1-7, for ordering
+  active      Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  assignments SlotAssignment[]
+  patterns    OnCallPattern[]
+
+  @@unique([role, position])
+}
+
+// Maps clinicians to slots with effective date ranges
+model SlotAssignment {
+  id            Int        @id @default(autoincrement())
+  slot          OnCallSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  slotId        Int
+  clinician     Clinician  @relation(fields: [clinicianId], references: [id])
+  clinicianId   Int
+  effectiveFrom DateTime
+  effectiveTo   DateTime?  // null = current/ongoing assignment
+  createdAt     DateTime   @default(now())
+  createdBy     Int?       // For audit trail
+
+  @@index([slotId, effectiveFrom])
+  @@index([clinicianId])
+}
+
+// Role-level configuration for on-call cycles
+model OnCallConfig {
+  id          Int      @id @default(autoincrement())
+  role        String   @unique  // "consultant" | "registrar"
+  cycleLength Int      // 7 (weeks for consultants) or 49 (days for registrars)
+  startDate   DateTime // Anchor date for cycle calculation
+  unitType    String   // "week" | "day"
+  updatedAt   DateTime @updatedAt
+}
+
+// Explicit pattern for registrar on-call (49 days)
+// Consultants use implicit pattern: week N = slot with position N
+model OnCallPattern {
+  id          Int        @id @default(autoincrement())
+  role        String     // "registrar" only
+  dayOfCycle  Int        // 1-49
+  slot        OnCallSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  slotId      Int
+
+  @@unique([role, dayOfCycle])
+  @@index([role])
 }
 
 model RotaEntry {
