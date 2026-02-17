@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../prisma.js';
 import { computeSchedule } from '../services/scheduleComputer.js';
 import { z } from 'zod';
-import ics from 'ics';
+import * as ics from 'ics';
 import { formatLeaveLabel, formatDutyDisplay } from '../utils/formatters.js';
 
 // Helper to get or create the default subscribe token
@@ -149,10 +149,12 @@ export async function publicRoutes(app: FastifyInstance) {
         // On-call and leave: create all-day event (but only once per day)
         // Skip PM to avoid duplicate all-day events
         if (isAM) {
+          // Calculate next day properly (handles month/year boundaries)
+          const nextDay = new Date(year, month - 1, day + 1);
           events.push({
             title,
             start: [year, month, day],
-            end: [year, month, day + 1],
+            end: [nextDay.getFullYear(), nextDay.getMonth() + 1, nextDay.getDate()],
             description: clinicianId ? undefined : entry.clinicianName
           });
         }
