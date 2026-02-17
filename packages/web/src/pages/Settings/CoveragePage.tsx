@@ -85,6 +85,7 @@ export const CoveragePage: React.FC = () => {
   const [selectedRequest, setSelectedRequest] = useState<CoverageRequest | null>(null);
   const [selectedRegistrarId, setSelectedRegistrarId] = useState<number | null>(null);
   const [unavailableExpanded, setUnavailableExpanded] = useState(false);
+  const [requestToDelete, setRequestToDelete] = useState<CoverageRequest | null>(null);
 
   const listQuery = useQuery({ queryKey: ['coverage'], queryFn: fetchCoverageRequests });
 
@@ -151,6 +152,26 @@ export const CoveragePage: React.FC = () => {
       notifications.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to cancel request',
+        color: 'red',
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => api.delete(`/api/coverage/${id}/permanent`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['coverage'] });
+      notifications.show({
+        title: 'Deleted',
+        message: 'Coverage request permanently deleted',
+        color: 'green',
+      });
+      setRequestToDelete(null);
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error?.response?.data?.message || error?.message || 'Failed to delete request',
         color: 'red',
       });
     },
@@ -425,6 +446,23 @@ export const CoveragePage: React.FC = () => {
                           </ActionIcon>
                         </Tooltip>
                       )}
+                      {r.status === 'cancelled' && (
+                        <Tooltip label="Delete permanently" withArrow>
+                          <ActionIcon
+                            variant="light"
+                            color="red"
+                            onClick={() => setRequestToDelete(r)}
+                            radius="md"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"/>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                              <line x1="10" y1="11" x2="10" y2="17"/>
+                              <line x1="14" y1="11" x2="14" y2="17"/>
+                            </svg>
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
                     </Group>
                   </Table.Td>
                 </Table.Tr>
@@ -636,6 +674,75 @@ export const CoveragePage: React.FC = () => {
                 disabled={!selectedRegistrarId}
               >
                 Assign Selected
+              </Button>
+            </Group>
+          </Box>
+        )}
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        opened={!!requestToDelete}
+        onClose={() => setRequestToDelete(null)}
+        title={
+          <Group gap="xs">
+            <Box
+              style={{
+                width: 28,
+                height: 28,
+                backgroundColor: 'rgba(255, 59, 48, 0.1)',
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff3b30" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+            </Box>
+            <Text fw={600}>Delete Coverage Request</Text>
+          </Group>
+        }
+        size="sm"
+        centered
+      >
+        {requestToDelete && (
+          <Box>
+            <Text size="sm" c="dimmed" mb={16}>
+              Are you sure you want to permanently delete this coverage request? This action cannot be undone.
+            </Text>
+            <Box
+              p={12}
+              mb={20}
+              style={{
+                backgroundColor: '#f5f5f7',
+                borderRadius: 8,
+              }}
+            >
+              <Text size="sm" fw={500}>{requestToDelete.duty.name}</Text>
+              <Text size="xs" c="dimmed">
+                {formatDateWithWeekday(requestToDelete.date)} - {requestToDelete.session}
+              </Text>
+              <Text size="xs" c="dimmed">
+                Consultant: {requestToDelete.consultant.name}
+              </Text>
+            </Box>
+            <Group justify="flex-end" gap="sm">
+              <Button
+                variant="subtle"
+                color="gray"
+                onClick={() => setRequestToDelete(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                color="red"
+                onClick={() => deleteMutation.mutate(requestToDelete.id)}
+                loading={deleteMutation.isPending}
+              >
+                Delete
               </Button>
             </Group>
           </Box>
