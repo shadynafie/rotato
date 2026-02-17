@@ -9,12 +9,6 @@ interface Clinician {
   role: 'consultant' | 'registrar';
 }
 
-interface SubscribeInfo {
-  clinician: Clinician;
-  icalUrl: string;
-  webcalUrl: string;
-}
-
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
 type Step = 'grade' | 'clinician' | 'subscribe';
@@ -35,17 +29,27 @@ export const SubscribePage: React.FC = () => {
     },
   });
 
-  // Fetch subscribe info when clinician is selected
-  const subscribeInfoQuery = useQuery({
-    queryKey: ['subscribe-info', selectedClinician?.id],
+  // Fetch the share token for calendar subscriptions
+  const tokenQuery = useQuery({
+    queryKey: ['subscribe-token'],
     queryFn: async () => {
-      const res = await axios.get<SubscribeInfo>(
-        `${API_BASE}/subscribe/${selectedClinician!.id}/info`
-      );
-      return res.data;
+      const res = await axios.get<{ token: string }>(`${API_BASE}/subscribe/token`);
+      return res.data.token;
     },
     enabled: !!selectedClinician,
   });
+
+  // Build URLs client-side (same pattern as ShareTokensPage)
+  const getIcalUrl = () => {
+    if (!tokenQuery.data || !selectedClinician) return '';
+    return `${window.location.origin}/public/${tokenQuery.data}/ical?clinician=${selectedClinician.id}`;
+  };
+
+  const getWebcalUrl = () => {
+    const icalUrl = getIcalUrl();
+    if (!icalUrl) return '';
+    return icalUrl.replace(/^https?:\/\//, 'webcal://');
+  };
 
   const handleSelectGrade = (role: 'consultant' | 'registrar') => {
     setSelectedRole(role);
@@ -68,9 +72,10 @@ export const SubscribePage: React.FC = () => {
   };
 
   const handleSubscribe = () => {
-    if (subscribeInfoQuery.data?.webcalUrl) {
+    const webcalUrl = getWebcalUrl();
+    if (webcalUrl) {
       // Open webcal:// URL to trigger calendar subscription
-      window.location.href = subscribeInfoQuery.data.webcalUrl;
+      window.location.href = webcalUrl;
     }
   };
 
@@ -350,11 +355,11 @@ export const SubscribePage: React.FC = () => {
               </Text>
             </Box>
 
-            {subscribeInfoQuery.isLoading ? (
+            {tokenQuery.isLoading ? (
               <Box ta="center" py={40}>
                 <Loader size="lg" color="#0071e3" />
               </Box>
-            ) : subscribeInfoQuery.isError ? (
+            ) : tokenQuery.isError ? (
               <Box
                 ta="center"
                 p={24}
@@ -406,14 +411,14 @@ export const SubscribePage: React.FC = () => {
                       color: '#1d1d1f',
                     }}
                   >
-                    {subscribeInfoQuery.data?.icalUrl}
+                    {getIcalUrl()}
                   </Box>
                   <Button
                     variant="light"
                     fullWidth
                     mt={12}
                     onClick={() => {
-                      navigator.clipboard.writeText(subscribeInfoQuery.data?.icalUrl || '');
+                      navigator.clipboard.writeText(getIcalUrl());
                     }}
                     style={{
                       borderRadius: 8,

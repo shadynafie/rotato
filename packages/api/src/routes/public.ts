@@ -215,51 +215,10 @@ export async function publicRoutes(app: FastifyInstance) {
     return clinician;
   });
 
-  // Get the personal iCal subscription URL for a clinician
-  app.get('/subscribe/:clinicianId/info', async (request, reply) => {
-    const clinicianId = Number((request.params as { clinicianId: string }).clinicianId);
-
-    const clinician = await prisma.clinician.findUnique({
-      where: { id: clinicianId, active: true },
-      select: { id: true, name: true, role: true }
-    });
-
-    if (!clinician) {
-      return reply.notFound('Clinician not found');
-    }
-
-    // Get or create the subscribe token
+  // Get the share token for personal calendar subscriptions
+  // URL is built client-side using window.location.origin
+  app.get('/subscribe/token', async () => {
     const token = await getSubscribeToken();
-
-    // Build the base URL
-    // Option 1: Use PUBLIC_URL env var if set (recommended for production)
-    // Option 2: Detect from request headers
-    let baseUrl = process.env.PUBLIC_URL;
-
-    if (!baseUrl) {
-      const forwardedHost = request.headers['x-forwarded-host'] as string | undefined;
-      const forwardedProto = request.headers['x-forwarded-proto'] as string | undefined;
-      const origin = request.headers.origin as string | undefined;
-      const hostHeader = request.headers.host as string;
-
-      // Extract domain from origin if available
-      const originHost = origin ? origin.replace(/^https?:\/\//, '') : undefined;
-      const host = forwardedHost || originHost || hostHeader;
-
-      // Use forwarded proto, or HTTPS for real domains
-      const isLocalhost = host?.startsWith('localhost') || host?.startsWith('127.0.0.1');
-      const protocol = forwardedProto || (isLocalhost ? 'http' : 'https');
-      baseUrl = `${protocol}://${host}`;
-    }
-
-    // The iCal URL for this clinician
-    const icalUrl = `${baseUrl}/public/${token}/ical?clinician=${clinicianId}`;
-
-    return {
-      clinician,
-      icalUrl,
-      // webcal:// protocol for one-click add on iOS/macOS
-      webcalUrl: icalUrl.replace(/^https?:/, 'webcal:')
-    };
+    return { token };
   });
 }
