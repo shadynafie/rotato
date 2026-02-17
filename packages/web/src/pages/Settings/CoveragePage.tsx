@@ -1,5 +1,5 @@
 import { ActionIcon, Badge, Box, Button, Collapse, Group, Loader, Modal, Progress, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
+import { notify } from '../../utils/notify';
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -100,7 +100,7 @@ export const CoveragePage: React.FC = () => {
       api.patch(`/api/coverage/${id}`, { assignedRegistrarId: registrarId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['coverage'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Registrar assigned successfully',
         color: 'green',
@@ -110,7 +110,7 @@ export const CoveragePage: React.FC = () => {
       setSelectedRegistrarId(null);
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to assign registrar',
         color: 'red',
@@ -123,14 +123,14 @@ export const CoveragePage: React.FC = () => {
       api.patch(`/api/coverage/${id}`, { assignedRegistrarId: null }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['coverage'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Assignment removed',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to remove assignment',
         color: 'red',
@@ -142,14 +142,14 @@ export const CoveragePage: React.FC = () => {
     mutationFn: async (id: number) => api.delete(`/api/coverage/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['coverage'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Coverage request cancelled',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to cancel request',
         color: 'red',
@@ -161,7 +161,7 @@ export const CoveragePage: React.FC = () => {
     mutationFn: async (id: number) => api.delete(`/api/coverage/${id}/permanent`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['coverage'] });
-      notifications.show({
+      notify.show({
         title: 'Deleted',
         message: 'Coverage request permanently deleted',
         color: 'green',
@@ -169,7 +169,7 @@ export const CoveragePage: React.FC = () => {
       setRequestToDelete(null);
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to delete request',
         color: 'red',
@@ -182,14 +182,14 @@ export const CoveragePage: React.FC = () => {
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['coverage'] });
       const { assigned, failed } = res.data;
-      notifications.show({
+      notify.show({
         title: 'Bulk Assignment Complete',
         message: `Assigned ${assigned} request${assigned !== 1 ? 's' : ''}${failed > 0 ? `, ${failed} failed` : ''}`,
         color: failed > 0 ? 'orange' : 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to auto-assign',
         color: 'red',

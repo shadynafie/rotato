@@ -1,6 +1,6 @@
 import { ActionIcon, Badge, Box, Button, Group, Loader, Modal, Select, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core';
 import { modals } from '@mantine/modals';
-import { notifications } from '@mantine/notifications';
+import { notify } from '../../utils/notify';
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -33,14 +33,14 @@ export const CliniciansPage: React.FC = () => {
     mutationFn: async (payload: Partial<Clinician>) => api.post('/api/clinicians', payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['clinicians'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Clinician created successfully',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to create clinician',
         color: 'red',
@@ -53,14 +53,14 @@ export const CliniciansPage: React.FC = () => {
       api.patch(`/api/clinicians/${id}`, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['clinicians'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Clinician updated successfully',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to update clinician',
         color: 'red',
@@ -72,7 +72,7 @@ export const CliniciansPage: React.FC = () => {
     mutationFn: async (c: Clinician) => api.patch(`/api/clinicians/${c.id}`, { active: !c.active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['clinicians'] }),
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to update status',
         color: 'red',
@@ -84,14 +84,14 @@ export const CliniciansPage: React.FC = () => {
     mutationFn: async (id: number) => api.delete(`/api/clinicians/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['clinicians'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Clinician deleted successfully',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to delete clinician',
         color: 'red',

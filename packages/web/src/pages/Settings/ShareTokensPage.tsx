@@ -1,5 +1,5 @@
 import { ActionIcon, Badge, Box, Button, Group, Loader, Stack, Table, Text, Tooltip, Accordion } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
+import { notify } from '../../utils/notify';
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -104,7 +104,7 @@ export const ShareTokensPage: React.FC = () => {
     },
     onSuccess: (newToken) => {
       qc.invalidateQueries({ queryKey: ['shareTokens'] });
-      notifications.show({
+      notify.show({
         title: 'New token generated',
         message: `Token created: ${newToken.token.slice(0, 8)}... All previous tokens have been deleted.`,
         color: 'green',

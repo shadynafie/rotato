@@ -1,7 +1,7 @@
 import { ActionIcon, Badge, Box, Button, Group, Loader, Modal, Select, Table, Text, Textarea, Tooltip } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { modals } from '@mantine/modals';
-import { notifications } from '@mantine/notifications';
+import { notify } from '../../utils/notify';
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -81,8 +81,9 @@ export const LeavesPage: React.FC = () => {
     onSuccess: (response) => {
       qc.invalidateQueries({ queryKey: ['leaves'] });
       qc.invalidateQueries({ queryKey: ['schedule'] });
+      qc.invalidateQueries({ queryKey: ['coverage'] }); // Update sidebar badge immediately
       const count = response.data?.count || 1;
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: `${count} day${count > 1 ? 's' : ''} of leave added successfully`,
         color: 'green',
@@ -90,7 +91,7 @@ export const LeavesPage: React.FC = () => {
       closeModal();
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to add leave',
         color: 'red',
@@ -103,14 +104,15 @@ export const LeavesPage: React.FC = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['leaves'] });
       qc.invalidateQueries({ queryKey: ['schedule'] });
-      notifications.show({
+      qc.invalidateQueries({ queryKey: ['coverage'] }); // Update sidebar badge immediately
+      notify.show({
         title: 'Success',
         message: 'Leave deleted successfully',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to delete leave',
         color: 'red',

@@ -1,6 +1,6 @@
 import { ActionIcon, Badge, Box, Button, Group, Loader, Modal, SimpleGrid, Switch, Table, Text, TextInput, Tooltip, UnstyledButton } from '@mantine/core';
 import { modals } from '@mantine/modals';
-import { notifications } from '@mantine/notifications';
+import { notify } from '../../utils/notify';
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -42,14 +42,14 @@ export const DutiesPage: React.FC = () => {
     mutationFn: async () => api.post('/api/duties', { name, color, requiresRegistrar }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['duties'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Duty created successfully',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to create duty',
         color: 'red',
@@ -62,14 +62,14 @@ export const DutiesPage: React.FC = () => {
       api.patch(`/api/duties/${id}`, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['duties'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Duty updated successfully',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to update duty',
         color: 'red',
@@ -81,14 +81,14 @@ export const DutiesPage: React.FC = () => {
     mutationFn: async (id: number) => api.delete(`/api/duties/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['duties'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Duty deleted successfully',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to delete duty',
         color: 'red',

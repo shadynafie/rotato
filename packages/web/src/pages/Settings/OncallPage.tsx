@@ -1,5 +1,5 @@
 import { Badge, Box, Button, Group, Loader, NumberInput, Select, SimpleGrid, Table, Text, TextInput } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
+import { notify } from '../../utils/notify';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -105,14 +105,14 @@ export const OncallPage: React.FC = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['oncall', 'data'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'On-call cycles saved successfully',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to save on-call cycles',
         color: 'red',

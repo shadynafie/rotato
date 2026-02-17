@@ -1,6 +1,6 @@
 import { ActionIcon, Box, Button, Group, Loader, Modal, PasswordInput, Table, Text, TextInput, Tooltip } from '@mantine/core';
 import { modals } from '@mantine/modals';
-import { notifications } from '@mantine/notifications';
+import { notify } from '../../utils/notify';
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -30,14 +30,14 @@ export const UsersPage: React.FC = () => {
     mutationFn: async (payload: { email: string; password: string }) => api.post('/api/users', payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'User created successfully',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to create user',
         color: 'red',
@@ -50,14 +50,14 @@ export const UsersPage: React.FC = () => {
       api.put(`/api/users/${id}`, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'User updated successfully',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to update user',
         color: 'red',
@@ -69,14 +69,14 @@ export const UsersPage: React.FC = () => {
     mutationFn: async (id: number) => api.delete(`/api/users/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'User deleted successfully',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to delete user',
         color: 'red',

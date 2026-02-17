@@ -1,5 +1,5 @@
 import { Badge, Box, Button, Group, Loader, Select, Stack, Tabs, Table, Text } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
+import { notify } from '../../utils/notify';
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -94,14 +94,14 @@ export const JobPlansPage: React.FC = () => {
     onSuccess: () => {
       setDirty({});
       qc.invalidateQueries({ queryKey: ['jobplan-data'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Job plans saved successfully',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || error?.message || 'Failed to save job plans',
         color: 'red',

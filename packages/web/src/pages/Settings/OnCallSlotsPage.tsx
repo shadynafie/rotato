@@ -17,7 +17,7 @@ import {
   ActionIcon,
   Timeline,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
+import { notify } from '../../utils/notify';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -206,14 +206,14 @@ export const OnCallSlotsPage: React.FC = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['oncall-slots', 'data'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'New slot created',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || 'Failed to create slot',
         color: 'red',
@@ -228,14 +228,14 @@ export const OnCallSlotsPage: React.FC = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['oncall-slots', 'data'] });
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Slot deleted',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || 'Failed to delete slot',
         color: 'red',
@@ -251,14 +251,14 @@ export const OnCallSlotsPage: React.FC = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['oncall-slots', 'data'] });
       setAssignModalOpen(false);
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Slot assignment saved',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || 'Failed to save assignment',
         color: 'red',
@@ -276,14 +276,14 @@ export const OnCallSlotsPage: React.FC = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['oncall-slots', 'data'] });
       setAssignModalOpen(false);
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Assignment ended',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || 'Failed to end assignment',
         color: 'red',
@@ -299,14 +299,14 @@ export const OnCallSlotsPage: React.FC = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['oncall-slots', 'data'] });
       setPatternModalOpen(false);
-      notifications.show({
+      notify.show({
         title: 'Success',
         message: 'Registrar pattern saved',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || 'Failed to save pattern',
         color: 'red',
@@ -325,14 +325,14 @@ export const OnCallSlotsPage: React.FC = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['rota'] });
       setUpdateCalendarModalOpen(false);
-      notifications.show({
+      notify.show({
         title: 'Calendar Updated',
         message: 'On-call assignments have been regenerated for the selected date range',
         color: 'green',
       });
     },
     onError: (error: any) => {
-      notifications.show({
+      notify.show({
         title: 'Error',
         message: error?.response?.data?.message || 'Failed to regenerate rota',
         color: 'red',
@@ -399,7 +399,7 @@ export const OnCallSlotsPage: React.FC = () => {
       { role, startDate },
       {
         onSuccess: () => {
-          notifications.show({
+          notify.show({
             title: 'Success',
             message: `${role === 'consultant' ? 'Consultant' : 'Registrar'} start date saved`,
             color: 'green',
