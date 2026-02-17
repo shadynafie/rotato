@@ -1,4 +1,4 @@
-import { ActionIcon, Badge, Box, Button, Group, Loader, Modal, Progress, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { ActionIcon, Badge, Box, Button, Collapse, Group, Loader, Modal, Progress, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -44,14 +44,27 @@ type SuggestedRegistrar = {
   lastAssignedDate: string | null;
 };
 
+type UnavailableRegistrar = {
+  clinicianId: number;
+  clinicianName: string;
+  grade: string | null;
+  unavailabilityReason: string;
+  unavailabilityLabel: string;
+};
+
+type SuggestionResult = {
+  available: SuggestedRegistrar[];
+  unavailable: UnavailableRegistrar[];
+};
+
 const fetchCoverageRequests = async () => {
   const res = await api.get<CoverageRequest[]>('/api/coverage');
   return res.data;
 };
 
 const fetchSuggestions = async (requestId: number) => {
-  const res = await api.get<{ suggestions: SuggestedRegistrar[] }>(`/api/coverage/${requestId}/suggestions`);
-  return res.data.suggestions;
+  const res = await api.get<SuggestionResult>(`/api/coverage/${requestId}/suggestions`);
+  return res.data;
 };
 
 const reasonLabels: Record<string, string> = {
@@ -71,12 +84,13 @@ export const CoveragePage: React.FC = () => {
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<CoverageRequest | null>(null);
   const [selectedRegistrarId, setSelectedRegistrarId] = useState<number | null>(null);
+  const [unavailableExpanded, setUnavailableExpanded] = useState(false);
 
   const listQuery = useQuery({ queryKey: ['coverage'], queryFn: fetchCoverageRequests });
 
   const suggestionsQuery = useQuery({
     queryKey: ['coverage-suggestions', selectedRequest?.id],
-    queryFn: () => selectedRequest ? fetchSuggestions(selectedRequest.id) : Promise.resolve([]),
+    queryFn: () => selectedRequest ? fetchSuggestions(selectedRequest.id) : Promise.resolve({ available: [], unavailable: [] }),
     enabled: !!selectedRequest && assignModalOpen
   });
 
@@ -165,6 +179,7 @@ export const CoveragePage: React.FC = () => {
   const openAssignModal = (request: CoverageRequest) => {
     setSelectedRequest(request);
     setSelectedRegistrarId(request.assignedRegistrarId || null);
+    setUnavailableExpanded(false);
     setAssignModalOpen(true);
   };
 
@@ -186,11 +201,11 @@ export const CoveragePage: React.FC = () => {
     return new Date(a.date).getTime() - new Date(b.date).getTime();
   });
 
-  // Get score color
+  // Get score color (0-100 scale)
   const getScoreColor = (score: number) => {
-    if (score >= 150) return 'green';
-    if (score >= 120) return 'teal';
-    if (score >= 100) return 'blue';
+    if (score >= 80) return 'green';
+    if (score >= 60) return 'teal';
+    if (score >= 40) return 'blue';
     return 'gray';
   };
 
@@ -445,7 +460,7 @@ export const CoveragePage: React.FC = () => {
               </Text>
             </Box>
 
-            <Text fw={500} mb={12}>Smart Suggestions</Text>
+            <Text fw={500} mb={12}>Available Registrars</Text>
 
             {suggestionsQuery.isLoading && (
               <Box ta="center" py={24}>
@@ -454,15 +469,15 @@ export const CoveragePage: React.FC = () => {
               </Box>
             )}
 
-            {suggestionsQuery.data && suggestionsQuery.data.length === 0 && (
+            {suggestionsQuery.data && suggestionsQuery.data.available.length === 0 && (
               <Box ta="center" py={24} style={{ backgroundColor: '#fff5f5', borderRadius: 8 }}>
                 <Text size="sm" c="red">No registrars available for this time slot</Text>
               </Box>
             )}
 
-            {suggestionsQuery.data && suggestionsQuery.data.length > 0 && (
-              <Stack gap="xs" mb={24}>
-                {suggestionsQuery.data.map((suggestion, index) => (
+            {suggestionsQuery.data && suggestionsQuery.data.available.length > 0 && (
+              <Stack gap="xs" mb={16}>
+                {suggestionsQuery.data.available.map((suggestion, index) => (
                   <UnstyledButton
                     key={suggestion.clinicianId}
                     onClick={() => setSelectedRegistrarId(suggestion.clinicianId)}
@@ -522,7 +537,7 @@ export const CoveragePage: React.FC = () => {
                           {suggestion.score}
                         </Badge>
                         <Progress
-                          value={Math.min(100, (suggestion.score / 170) * 100)}
+                          value={suggestion.score}
                           color={getScoreColor(suggestion.score)}
                           size="xs"
                           mt={6}
@@ -533,6 +548,74 @@ export const CoveragePage: React.FC = () => {
                   </UnstyledButton>
                 ))}
               </Stack>
+            )}
+
+            {/* Unavailable Section */}
+            {suggestionsQuery.data && suggestionsQuery.data.unavailable.length > 0 && (
+              <Box mb={16}>
+                <UnstyledButton
+                  onClick={() => setUnavailableExpanded(!unavailableExpanded)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    backgroundColor: '#f5f5f7',
+                    width: '100%',
+                  }}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#86868b"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{
+                      transform: unavailableExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                      transition: 'transform 200ms ease',
+                    }}
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                  <Text size="sm" c="dimmed" fw={500}>
+                    Unavailable ({suggestionsQuery.data.unavailable.length})
+                  </Text>
+                </UnstyledButton>
+
+                <Collapse in={unavailableExpanded}>
+                  <Stack gap="xs" mt={8} pl={8}>
+                    {suggestionsQuery.data.unavailable.map((registrar) => (
+                      <Box
+                        key={registrar.clinicianId}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: 8,
+                          backgroundColor: '#fafafa',
+                          border: '1px solid rgba(0, 0, 0, 0.04)',
+                        }}
+                      >
+                        <Group justify="space-between">
+                          <Group gap="sm">
+                            <Text size="sm" c="#666">{registrar.clinicianName}</Text>
+                            {registrar.grade && (
+                              <Badge variant="outline" color="gray" size="xs" tt="capitalize">
+                                {registrar.grade}
+                              </Badge>
+                            )}
+                          </Group>
+                          <Badge color="red" size="sm" variant="light">
+                            {registrar.unavailabilityLabel}
+                          </Badge>
+                        </Group>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Collapse>
+              </Box>
             )}
 
             <Group justify="flex-end" gap="sm">

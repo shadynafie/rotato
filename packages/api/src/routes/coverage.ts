@@ -247,15 +247,15 @@ export async function coverageRoutes(app: FastifyInstance) {
     });
 
     if (!coverageRequest) {
-      return { suggestions: [], error: 'Coverage request not found' };
+      return { available: [], unavailable: [], error: 'Coverage request not found' };
     }
 
-    const suggestions = await getSuggestedRegistrars({
+    const result = await getSuggestedRegistrars({
       date: new Date(coverageRequest.date),
       session: coverageRequest.session as 'AM' | 'PM'
     });
 
-    return { suggestions };
+    return result;
   });
 
   // Get smart suggestions for a specific date/session (without coverage request)
@@ -265,12 +265,12 @@ export async function coverageRoutes(app: FastifyInstance) {
       session: z.enum(['AM', 'PM'])
     }).parse(request.query);
 
-    const suggestions = await getSuggestedRegistrars({
+    const result = await getSuggestedRegistrars({
       date: new Date(query.date),
       session: query.session
     });
 
-    return { suggestions };
+    return result;
   });
 
   // Auto-assign best registrar to a coverage request
