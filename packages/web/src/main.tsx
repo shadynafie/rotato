@@ -19,6 +19,7 @@ import { ShareTokensPage } from './pages/Settings/ShareTokensPage';
 import { UsersPage } from './pages/Settings/UsersPage';
 import { CoveragePage } from './pages/Settings/CoveragePage';
 import { PublicViewPage } from './pages/PublicViewPage';
+import { SubscribePage } from './pages/SubscribePage';
 import { MainLayout } from './layout/MainLayout';
 
 import '@mantine/core/styles.css';
@@ -148,6 +149,7 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
                 {/* Public routes - no auth required */}
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/view/:token" element={<PublicViewPage />} />
+                <Route path="/subscribe" element={<SubscribePage />} />
 
                 {/* Protected routes - auth required */}
                 <Route path="/" element={<ProtectedPage><CalendarPage /></ProtectedPage>} />

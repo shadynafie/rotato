@@ -5,6 +5,25 @@ import { z } from 'zod';
 import ics from 'ics';
 import { formatLeaveLabel, formatDutyDisplay } from '../utils/formatters.js';
 
+// Helper to get or create the default subscribe token
+async function getSubscribeToken(): Promise<string> {
+  const existing = await prisma.shareToken.findFirst({
+    where: { description: 'Personal Calendar Subscriptions', active: true }
+  });
+  if (existing) return existing.token;
+
+  // Create a dedicated token for personal subscriptions
+  const token = crypto.randomUUID().replace(/-/g, '');
+  await prisma.shareToken.create({
+    data: {
+      token,
+      description: 'Personal Calendar Subscriptions',
+      active: true
+    }
+  });
+  return token;
+}
+
 async function validateToken(token: string) {
   // Find token by unique field, then verify it's active
   const record = await prisma.shareToken.findUnique({ where: { token } });
@@ -161,5 +180,70 @@ export async function publicRoutes(app: FastifyInstance) {
     reply.header('Pragma', 'no-cache');
     reply.header('Expires', '0');
     reply.send(value);
+  });
+
+  // ============================================
+  // SUBSCRIBE FLOW (QR Code Onboarding)
+  // ============================================
+
+  // Get active clinicians grouped by role (no auth required)
+  app.get('/subscribe/clinicians', async () => {
+    const clinicians = await prisma.clinician.findMany({
+      where: { active: true },
+      select: { id: true, name: true, role: true },
+      orderBy: { name: 'asc' }
+    });
+
+    const consultants = clinicians.filter(c => c.role === 'consultant');
+    const registrars = clinicians.filter(c => c.role === 'registrar');
+
+    return { consultants, registrars };
+  });
+
+  // Get a specific clinician by ID (for subscribe page)
+  app.get('/subscribe/clinicians/:id', async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const clinician = await prisma.clinician.findUnique({
+      where: { id, active: true },
+      select: { id: true, name: true, role: true }
+    });
+
+    if (!clinician) {
+      return reply.notFound('Clinician not found');
+    }
+
+    return clinician;
+  });
+
+  // Get the personal iCal subscription URL for a clinician
+  app.get('/subscribe/:clinicianId/info', async (request, reply) => {
+    const clinicianId = Number((request.params as { clinicianId: string }).clinicianId);
+
+    const clinician = await prisma.clinician.findUnique({
+      where: { id: clinicianId, active: true },
+      select: { id: true, name: true, role: true }
+    });
+
+    if (!clinician) {
+      return reply.notFound('Clinician not found');
+    }
+
+    // Get or create the subscribe token
+    const token = await getSubscribeToken();
+
+    // Build the base URL from request
+    const protocol = request.headers['x-forwarded-proto'] || 'http';
+    const host = request.headers['x-forwarded-host'] || request.headers.host;
+    const baseUrl = `${protocol}://${host}`;
+
+    // The iCal URL for this clinician
+    const icalUrl = `${baseUrl}/public/${token}/ical?clinician=${clinicianId}`;
+
+    return {
+      clinician,
+      icalUrl,
+      // webcal:// protocol for one-click add on iOS/macOS
+      webcalUrl: icalUrl.replace(/^https?:/, 'webcal:')
+    };
   });
 }
