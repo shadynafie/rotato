@@ -67,48 +67,36 @@ Then access: `http://YOUR-SERVER-IP:3001`
 
 ## How to Use Rotato
 
-### Viewing the Rota
+### Navigation Overview
 
-1. Open Rotato in your browser
-2. The **Calendar** page shows the current schedule
-3. Use the tabs to switch between **Day**, **Week**, and **Month** views
-4. Click on any day to see full details
+The left-hand menu is organised into two sections:
 
-### Managing Clinicians
+**Daily Tasks** (top section)
+- **Calendar** — View and edit the rota
+- **Leave** — Record annual leave, study leave, sick days
+- **Coverage** — Assign cover when registrars are away
+- **Share Links** — Create links to share the rota
 
-1. Go to **Settings** → **Clinicians**
-2. Click **Add Clinician** to add a new team member
-3. Set their role (Consultant or Registrar)
-4. For registrars, set their grade (Junior or Senior) — useful for matching cover
-5. Their name will now appear in the scheduling options
+**Settings** (collapsible, click to expand)
+- **Clinicians** — Add/remove team members
+- **Duty Types** — Define clinic types, theatres, admin
+- **Job Plans** — Set up weekly templates
+- **On-Call Templates** — Configure on-call rotations
+- **Admin Users** — Manage who can edit the rota
 
-### Setting Up Job Plans
+---
 
-Job plans define what each clinician does on each day of the week, repeating on a 5-week cycle.
+### Daily Tasks
 
-1. Go to **Settings** → **Job Plans**
-2. Use the Week 1-5 tabs to set up each week's template
-3. For each clinician and day, select their AM and PM duties (Clinic, Theatre, Admin, etc.)
-4. **For registrars:** When you select a duty, you'll see a "Supporting..." dropdown
-   - This shows which consultant the registrar is working with
-   - Only consultants with the same duty on that slot are shown
-5. Click **Save Changes** when done
+#### Viewing the Rota
 
-> **Tip:** The calendar shows "Nafie Clinic" format — the consultant's surname plus the duty name — so everyone knows who's working together.
+1. Click **Calendar** in the menu
+2. Use the tabs to switch between **Day**, **Week**, and **Month** views
+3. Click on any cell to edit or add a manual override
 
-### Setting Up On-Call Rotas
+#### Recording Leave
 
-1. Go to **Settings** → **On-Call Slots**
-2. You'll see slots for consultants (7-week cycle) and registrars (49-day cycle)
-3. Assign clinicians to their slots using the dropdown
-4. When staff change, simply update the assignment — the rotation pattern stays the same
-5. The system automatically calculates who's on call for any date
-
-> **Tip:** The slot-based system means when someone leaves or joins, you only need to update their slot assignment. The underlying rotation pattern remains unchanged.
-
-### Recording Leave
-
-1. Go to **Settings** → **Leave**
+1. Click **Leave** in the menu
 2. Click **Add Leave**
 3. Select the clinician and date range
 4. Choose the type: Annual, Study, Sick, or Professional
@@ -116,24 +104,57 @@ Job plans define what each clinician does on each day of the week, repeating on 
    - **Red** — Annual Leave, Sick Leave
    - **Purple** — Study Leave, Professional Leave
 
-### Managing Coverage
+#### Managing Coverage
 
 When a registrar goes on leave, their supporting consultant may need cover. Rotato helps track this.
 
-1. Go to **Settings** → **Coverage**
+1. Click **Coverage** in the menu
 2. You'll see pending coverage requests (automatically created when registrars take leave)
 3. Click on a request to see suggested registrars who are available
 4. Assign a registrar to provide cover, or use **Auto-Assign** for smart suggestions
-5. The suggestions consider workload balance and availability
 
 > **Note:** If a leave is cancelled, any associated coverage requests are automatically removed.
 
-### Sharing the Rota
+#### Sharing the Rota
 
-1. Go to **Settings** → **Share Links**
+1. Click **Share Links** in the menu
 2. Click **Create New Link**
 3. Copy the link and share it with your team
 4. Anyone with the link can view the rota (no login needed)
+
+---
+
+### Settings (One-Time Setup)
+
+These are configured once and rarely need changing.
+
+#### Managing Clinicians
+
+1. Expand **Settings** → click **Clinicians**
+2. Click **Add Clinician** to add a new team member
+3. Set their role (Consultant or Registrar)
+4. For registrars, set their grade (Junior or Senior) — useful for matching cover
+
+#### Setting Up Job Plans
+
+Job plans define what each clinician does on each day of the week, repeating on a 5-week cycle.
+
+1. Expand **Settings** → click **Job Plans**
+2. Use the Week 1-5 tabs to set up each week's template
+3. For each clinician and day, select their AM and PM duties (Clinic, Theatre, Admin, etc.)
+4. **For registrars:** Select which consultant they're supporting from the dropdown
+5. Click **Save Changes** when done
+
+> **Tip:** The calendar shows "Nafie Clinic" format — the consultant's surname plus the duty name — so everyone knows who's working together.
+
+#### Setting Up On-Call Rotas
+
+1. Expand **Settings** → click **On-Call Templates**
+2. You'll see slots for consultants (7-week cycle) and registrars (49-day cycle)
+3. Assign clinicians to their slots using the dropdown
+4. When staff change, simply update the assignment — the rotation pattern stays the same
+
+> **Tip:** The slot-based system means when someone leaves or joins, you only need to update their slot assignment. The underlying rotation pattern remains unchanged.
 
 ---
 
