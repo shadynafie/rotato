@@ -598,17 +598,12 @@ export const CoveragePage: React.FC = () => {
                             </Badge>
                           )}
                         </Group>
-                        <Group gap="xs" mb={8}>
+                        <Group gap="xs">
                           {suggestion.reasons.slice(0, 2).map((reason, i) => (
                             <Text key={i} size="xs" c="dimmed">
                               {i > 0 && '•'} {reason}
                             </Text>
                           ))}
-                        </Group>
-                        <Group gap="md">
-                          <Text size="xs" c="dimmed">
-                            30d: {suggestion.coveragesIn30Days} coverages, {suggestion.oncallsIn30Days} on-calls, {suggestion.dutiesIn30Days} duties
-                          </Text>
                         </Group>
                       </Box>
                       <Box style={{ textAlign: 'right', minWidth: 80 }}>
