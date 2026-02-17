@@ -42,6 +42,34 @@ npm run lint
 - `src/utils/formatters.ts` - Shared formatting utilities (see below)
 - `src/utils/constants.ts` - Shared constants (LEAVE_TYPES, SESSIONS, COLORS)
 
+### Reusable Components (`packages/web/src/components/`)
+Always use these shared components instead of inline implementations:
+
+**Layout Components:**
+- `PageHeader` - Page title, subtitle, and action buttons
+- `TableCard` - Styled card wrapper for tables with optional header badge
+- `EmptyState` - Icon, title, message, optional action for empty lists
+- `LoadingSpinner` - Centered spinner with optional message
+
+**Display Components:**
+- `ColorDot` - Duty color indicator dot
+- `ActionButtons` - Edit/delete button group with tooltips
+- `RoleBadge`, `GradeBadge`, `ActiveBadge`, `SessionBadge`, `CoverageStatusBadge` - Status badges
+
+**Icons (`components/Icons.tsx`):**
+Export all SVG icons from here. Available: `AddIcon`, `EditIcon`, `DeleteIcon`, `CheckIcon`, `CloseIcon`, `CalendarIcon`, `UserIcon`, `UsersIcon`, `SaveIcon`, `PhoneIcon`, `ShareIcon`, `FileIcon`, `RefreshIcon`, `CopyIcon`, etc.
+
+### Reusable Hooks (`packages/web/src/hooks/`)
+**`useCRUDMutations<T>({ endpoint, queryKey, entityName })`**
+Returns `createMutation`, `updateMutation`, `putMutation`, `deleteMutation` with automatic query invalidation and notifications.
+
+**`useModalForm<T>({ defaultValues })`**
+Returns `isOpen`, `editingId`, `isEditing`, `form`, `updateField`, `openCreate`, `openEdit`, `close` for modal state management.
+
+### Backend Services (`packages/api/src/services/`)
+- `oncallCalculator.ts` - Shared `getOncallClinicianForDate()` function used by both rotaGenerator and scheduleComputer
+- `crudService.ts` - `createWithAudit()`, `updateWithAudit()`, `deleteWithAudit()` wrappers for consistent audit logging
+
 ### Rota Generation Logic
 1. Job plans define Week 1-5 templates per clinician (AM/PM duties)
 2. On-call uses slot-based system: abstract slots (Registrar 01-07, Consultant 01-07) with assignments
@@ -169,3 +197,13 @@ Mobile-friendly QR code onboarding for clinicians to add their personal calendar
 - UK date format (dd/mm/yyyy), 12-hour clock, Europe/London timezone
 - All mutations logged to AuditLog with before/after snapshots (as JSON strings)
 - Public endpoints use high-entropy share tokens for read-only access
+- **Always use reusable components** from `components/` instead of inline SVGs or styled boxes:
+  - Use `PageHeader` for page titles (not inline `<Group>` with styled `<Text>`)
+  - Use `LoadingSpinner` for loading states (not inline `<Loader>`)
+  - Use `EmptyState` for empty data states (not inline styled boxes)
+  - Use `ActionButtons` for edit/delete actions (not inline `<ActionIcon>` groups)
+  - Use `TableCard` for table containers (not inline styled `<Box>`)
+  - Import icons from `components/Icons.tsx` (not inline `<svg>`)
+- **Always use reusable hooks** from `hooks/`:
+  - Use `useCRUDMutations` for standard CRUD operations (not inline mutations)
+  - Use `useModalForm` for modal state management (not inline useState calls)

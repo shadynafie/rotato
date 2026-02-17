@@ -1,6 +1,6 @@
 import { prisma } from '../prisma.js';
-import type { OnCallConfig, OnCallSlot, OnCallPattern, SlotAssignment } from '@prisma/client';
 import { formatDateString, dateRange, weekOfMonth, getDayOfWeek } from '../utils/dateHelpers.js';
+import { getOncallClinicianForDate, type SlotBasedData } from './oncallCalculator.js';
 
 type Session = 'AM' | 'PM';
 
@@ -22,75 +22,6 @@ interface ScheduleEntry {
   isRestOff: boolean;  // true if OFF (no duty), false if SPA duty
   supportingClinicianId: number | null;
   supportingClinicianName: string | null;
-}
-
-// Slot-based on-call data structure
-interface SlotBasedData {
-  config: OnCallConfig | null;
-  slots: OnCallSlot[];
-  patterns: OnCallPattern[];
-  assignments: SlotAssignment[];
-}
-
-// Slot-based on-call clinician picker
-function computeOncallClinicianSlotBased(
-  date: Date,
-  role: 'consultant' | 'registrar',
-  data: SlotBasedData
-): number | null {
-  const { config, slots, patterns, assignments } = data;
-
-  if (!config || slots.length === 0) return null;
-
-  // Use string-based date comparison to avoid timezone issues
-  const dateStr = formatDateString(date);
-  const startDateStr = formatDateString(config.startDate);
-
-  // Calculate days difference using UTC timestamps of midnight
-  const dateMs = Date.parse(dateStr + 'T00:00:00Z');
-  const startDateMs = Date.parse(startDateStr + 'T00:00:00Z');
-  const daysSinceStart = Math.round((dateMs - startDateMs) / (1000 * 60 * 60 * 24));
-
-  let slotId: number;
-
-  if (role === 'consultant') {
-    // Consultants: week N = slot with position N (implicit pattern)
-    const weeksSinceStart = Math.floor(daysSinceStart / 7);
-    const weekOfCycle = ((weeksSinceStart % config.cycleLength) + config.cycleLength) % config.cycleLength;
-    const position = weekOfCycle + 1; // 1-indexed
-    const slot = slots.find(s => s.position === position);
-
-    if (!slot) return null;
-    slotId = slot.id;
-  } else {
-    // Registrars: use explicit pattern if available, otherwise implicit round-robin
-    const dayOfCycle = ((daysSinceStart % config.cycleLength) + config.cycleLength) % config.cycleLength + 1;
-
-    if (patterns.length > 0) {
-      // Explicit pattern configured - use it
-      const pattern = patterns.find(p => p.dayOfCycle === dayOfCycle);
-      if (!pattern) return null;
-      slotId = pattern.slotId;
-    } else {
-      // No explicit pattern - use implicit round-robin (like consultants but daily)
-      const position = ((dayOfCycle - 1) % slots.length) + 1;
-      const slot = slots.find(s => s.position === position);
-      if (!slot) return null;
-      slotId = slot.id;
-    }
-  }
-
-  // Find active assignment for this slot on this date
-  const assignment = assignments.find(a => {
-    if (a.slotId !== slotId) return false;
-
-    const fromStr = formatDateString(a.effectiveFrom);
-    const toStr = a.effectiveTo ? formatDateString(a.effectiveTo) : '9999-12-31';
-
-    return fromStr <= dateStr && toStr >= dateStr;
-  });
-
-  return assignment?.clinicianId ?? null;
 }
 
 export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEntry[]> {
@@ -198,7 +129,7 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
   // Helper function to compute on-call for a specific date and role (slot-based only)
   const getOncallClinicianId = (date: Date, role: 'consultant' | 'registrar'): number | null => {
     const isConsultant = role === 'consultant';
-    return computeOncallClinicianSlotBased(
+    return getOncallClinicianForDate(
       date,
       role,
       isConsultant ? consultantData : registrarData
@@ -506,8 +437,8 @@ export async function getTodayOncall(): Promise<{
   };
 
   // Calculate on-call IDs using slot-based system
-  const oncallConsultantId = computeOncallClinicianSlotBased(today, 'consultant', consultantData);
-  const oncallRegistrarId = computeOncallClinicianSlotBased(today, 'registrar', registrarData);
+  const oncallConsultantId = getOncallClinicianForDate(today, 'consultant', consultantData);
+  const oncallRegistrarId = getOncallClinicianForDate(today, 'registrar', registrarData);
 
   const consultant = clinicians.find((c) => c.id === oncallConsultantId);
   const registrar = clinicians.find((c) => c.id === oncallRegistrarId);

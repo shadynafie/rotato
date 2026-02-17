@@ -1,4 +1,4 @@
-import { ActionIcon, Badge, Box, Button, Group, Loader, Modal, Select, Table, Text, Textarea, Tooltip } from '@mantine/core';
+import { ActionIcon, Badge, Box, Button, Group, Modal, Select, Table, Text, Textarea, Tooltip } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { modals } from '@mantine/modals';
 import { notify } from '../../utils/notify';
@@ -7,6 +7,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import { formatDateWithWeekday } from '../../utils/formatters';
 import { LEAVE_TYPES, SESSIONS } from '../../utils/constants';
+import {
+  PageHeader,
+  LoadingSpinner,
+  EmptyState,
+  SessionBadge,
+  AddIcon,
+  DeleteIcon,
+  CalendarIcon,
+} from '../../components';
 
 interface Clinician {
   id: number;
@@ -81,7 +90,7 @@ export const LeavesPage: React.FC = () => {
     onSuccess: (response) => {
       qc.invalidateQueries({ queryKey: ['leaves'] });
       qc.invalidateQueries({ queryKey: ['schedule'] });
-      qc.invalidateQueries({ queryKey: ['coverage'] }); // Update sidebar badge immediately
+      qc.invalidateQueries({ queryKey: ['coverage'] });
       const count = response.data?.count || 1;
       notify.show({
         title: 'Success',
@@ -104,7 +113,7 @@ export const LeavesPage: React.FC = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['leaves'] });
       qc.invalidateQueries({ queryKey: ['schedule'] });
-      qc.invalidateQueries({ queryKey: ['coverage'] }); // Update sidebar badge immediately
+      qc.invalidateQueries({ queryKey: ['coverage'] });
       notify.show({
         title: 'Success',
         message: 'Leave deleted successfully',
@@ -163,79 +172,76 @@ export const LeavesPage: React.FC = () => {
   const upcomingLeaves = (leavesQuery.data || []).filter((l) => new Date(l.date) >= today);
   const pastLeaves = (leavesQuery.data || []).filter((l) => new Date(l.date) < today);
 
+  const renderLeaveTable = (leaves: Leave[], isPast: boolean = false) => (
+    <Table verticalSpacing="md" horizontalSpacing="lg">
+      <Table.Thead>
+        <Table.Tr style={{ backgroundColor: '#fafafa' }}>
+          <Table.Th>Date</Table.Th>
+          <Table.Th>Clinician</Table.Th>
+          <Table.Th>Session</Table.Th>
+          <Table.Th>Type</Table.Th>
+          <Table.Th>Note</Table.Th>
+          <Table.Th style={{ width: 80 }}>Actions</Table.Th>
+        </Table.Tr>
+      </Table.Thead>
+      <Table.Tbody>
+        {leaves.map((leave) => (
+          <Table.Tr key={leave.id} style={isPast ? { opacity: 0.6 } : undefined}>
+            <Table.Td>
+              <Text fw={500} c="#1d1d1f">{formatDateWithWeekday(leave.date)}</Text>
+            </Table.Td>
+            <Table.Td>
+              <Text>{leave.clinician.name}</Text>
+            </Table.Td>
+            <Table.Td>
+              <SessionBadge session={leave.session as 'FULL' | 'AM' | 'PM'} />
+            </Table.Td>
+            <Table.Td>
+              <Badge variant="light" color={getLeaveTypeColor(leave.type)} size="sm">
+                {LEAVE_TYPES.find((t) => t.value === leave.type)?.label || leave.type}
+              </Badge>
+            </Table.Td>
+            <Table.Td>
+              <Text c="dimmed" size="sm" lineClamp={1}>{leave.note || '—'}</Text>
+            </Table.Td>
+            <Table.Td>
+              <Tooltip label="Delete leave" withArrow>
+                <ActionIcon
+                  variant="light"
+                  color="red"
+                  onClick={() => confirmDelete(leave)}
+                  radius="md"
+                >
+                  <DeleteIcon />
+                </ActionIcon>
+              </Tooltip>
+            </Table.Td>
+          </Table.Tr>
+        ))}
+      </Table.Tbody>
+    </Table>
+  );
+
   return (
     <Box>
-      {/* Page Header */}
-      <Group justify="space-between" mb={32}>
-        <Box>
-          <Text
-            style={{
-              fontSize: '2rem',
-              fontWeight: 700,
-              color: '#1d1d1f',
-              letterSpacing: '-0.025em',
-              marginBottom: 8,
-            }}
-          >
-            Leave Management
-          </Text>
-          <Text style={{ fontSize: '1.0625rem', color: '#86868b' }}>
-            Record and manage staff leave
-          </Text>
-        </Box>
-        <Button
-          onClick={openAddModal}
-          leftSection={
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-          }
-        >
-          Add Leave
-        </Button>
-      </Group>
+      <PageHeader
+        title="Leave Management"
+        subtitle="Record and manage staff leave"
+        actions={
+          <Button onClick={openAddModal} leftSection={<AddIcon />}>
+            Add Leave
+          </Button>
+        }
+      />
 
-      {/* Loading */}
-      {isLoading && (
-        <Box ta="center" py={60}>
-          <Loader size="lg" color="#0071e3" />
-        </Box>
-      )}
+      {isLoading && <LoadingSpinner />}
 
-      {/* Empty State */}
       {!isLoading && leavesQuery.data && leavesQuery.data.length === 0 && (
-        <Box
-          ta="center"
-          py={60}
-          style={{
-            backgroundColor: '#ffffff',
-            borderRadius: 16,
-            border: '1px solid rgba(0, 0, 0, 0.06)',
-          }}
-        >
-          <Box
-            style={{
-              width: 64,
-              height: 64,
-              backgroundColor: '#f5f5f7',
-              borderRadius: 16,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 16px',
-            }}
-          >
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#86868b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-              <line x1="16" y1="2" x2="16" y2="6"/>
-              <line x1="8" y1="2" x2="8" y2="6"/>
-              <line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-          </Box>
-          <Text fw={500} c="#1d1d1f" mb={4}>No leave recorded</Text>
-          <Text c="dimmed" size="sm">Add leave entries to track staff absences</Text>
-        </Box>
+        <EmptyState
+          icon={<CalendarIcon size={28} color="#86868b" strokeWidth={1.5} />}
+          title="No leave recorded"
+          message="Add leave entries to track staff absences"
+        />
       )}
 
       {/* Upcoming Leaves */}
@@ -264,60 +270,7 @@ export const LeavesPage: React.FC = () => {
               <Text c="dimmed" size="sm">{upcomingLeaves.length} entries</Text>
             </Group>
           </Box>
-          <Table verticalSpacing="md" horizontalSpacing="lg">
-            <Table.Thead>
-              <Table.Tr style={{ backgroundColor: '#fafafa' }}>
-                <Table.Th>Date</Table.Th>
-                <Table.Th>Clinician</Table.Th>
-                <Table.Th>Session</Table.Th>
-                <Table.Th>Type</Table.Th>
-                <Table.Th>Note</Table.Th>
-                <Table.Th style={{ width: 80 }}>Actions</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {upcomingLeaves.map((leave) => (
-                <Table.Tr key={leave.id}>
-                  <Table.Td>
-                    <Text fw={500} c="#1d1d1f">{formatDateWithWeekday(leave.date)}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text>{leave.clinician.name}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge variant="light" color="gray" size="sm">
-                      {leave.session}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge variant="light" color={getLeaveTypeColor(leave.type)} size="sm">
-                      {LEAVE_TYPES.find((t) => t.value === leave.type)?.label || leave.type}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text c="dimmed" size="sm" lineClamp={1}>{leave.note || '—'}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Tooltip label="Delete leave" withArrow>
-                      <ActionIcon
-                        variant="light"
-                        color="red"
-                        onClick={() => confirmDelete(leave)}
-                        radius="md"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="3,6 5,6 21,6"/>
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                          <line x1="10" y1="11" x2="10" y2="17"/>
-                          <line x1="14" y1="11" x2="14" y2="17"/>
-                        </svg>
-                      </ActionIcon>
-                    </Tooltip>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
+          {renderLeaveTable(upcomingLeaves)}
         </Box>
       )}
 
@@ -346,60 +299,7 @@ export const LeavesPage: React.FC = () => {
               <Text c="dimmed" size="sm">{pastLeaves.length} entries</Text>
             </Group>
           </Box>
-          <Table verticalSpacing="md" horizontalSpacing="lg">
-            <Table.Thead>
-              <Table.Tr style={{ backgroundColor: '#fafafa' }}>
-                <Table.Th>Date</Table.Th>
-                <Table.Th>Clinician</Table.Th>
-                <Table.Th>Session</Table.Th>
-                <Table.Th>Type</Table.Th>
-                <Table.Th>Note</Table.Th>
-                <Table.Th style={{ width: 80 }}>Actions</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {pastLeaves.map((leave) => (
-                <Table.Tr key={leave.id} style={{ opacity: 0.6 }}>
-                  <Table.Td>
-                    <Text fw={500} c="#1d1d1f">{formatDateWithWeekday(leave.date)}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text>{leave.clinician.name}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge variant="light" color="gray" size="sm">
-                      {leave.session}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge variant="light" color={getLeaveTypeColor(leave.type)} size="sm">
-                      {LEAVE_TYPES.find((t) => t.value === leave.type)?.label || leave.type}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text c="dimmed" size="sm" lineClamp={1}>{leave.note || '—'}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Tooltip label="Delete leave" withArrow>
-                      <ActionIcon
-                        variant="light"
-                        color="red"
-                        onClick={() => confirmDelete(leave)}
-                        radius="md"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="3,6 5,6 21,6"/>
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                          <line x1="10" y1="11" x2="10" y2="17"/>
-                          <line x1="14" y1="11" x2="14" y2="17"/>
-                        </svg>
-                      </ActionIcon>
-                    </Tooltip>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
+          {renderLeaveTable(pastLeaves, true)}
         </Box>
       )}
 
@@ -425,9 +325,7 @@ export const LeavesPage: React.FC = () => {
               onChange={setClinicianId}
               required
               searchable
-              styles={{
-                label: { marginBottom: 8, fontWeight: 500 },
-              }}
+              styles={{ label: { marginBottom: 8, fontWeight: 500 } }}
             />
           </Box>
           <Box mb={16}>
@@ -439,9 +337,7 @@ export const LeavesPage: React.FC = () => {
               onChange={setDateRange}
               required
               allowSingleDateInRange
-              styles={{
-                label: { marginBottom: 8, fontWeight: 500 },
-              }}
+              styles={{ label: { marginBottom: 8, fontWeight: 500 } }}
             />
             {dayCount > 0 && (
               <Text size="sm" c="dimmed" mt={4}>
@@ -456,9 +352,7 @@ export const LeavesPage: React.FC = () => {
               value={session}
               onChange={setSession}
               required
-              styles={{
-                label: { marginBottom: 8, fontWeight: 500 },
-              }}
+              styles={{ label: { marginBottom: 8, fontWeight: 500 } }}
             />
           </Box>
           <Box mb={16}>
@@ -468,9 +362,7 @@ export const LeavesPage: React.FC = () => {
               value={leaveType}
               onChange={setLeaveType}
               required
-              styles={{
-                label: { marginBottom: 8, fontWeight: 500 },
-              }}
+              styles={{ label: { marginBottom: 8, fontWeight: 500 } }}
             />
           </Box>
           <Box mb={24}>
@@ -479,9 +371,7 @@ export const LeavesPage: React.FC = () => {
               placeholder="Add any notes..."
               value={note}
               onChange={(e) => setNote(e.currentTarget.value)}
-              styles={{
-                label: { marginBottom: 8, fontWeight: 500 },
-              }}
+              styles={{ label: { marginBottom: 8, fontWeight: 500 } }}
             />
           </Box>
           <Group justify="flex-end" gap="sm">

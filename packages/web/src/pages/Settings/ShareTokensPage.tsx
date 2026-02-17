@@ -1,8 +1,18 @@
-import { ActionIcon, Badge, Box, Button, Group, Loader, Stack, Table, Text, Tooltip, Accordion } from '@mantine/core';
+import { ActionIcon, Badge, Box, Button, Group, Stack, Table, Text, Tooltip, Accordion } from '@mantine/core';
 import { notify } from '../../utils/notify';
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import {
+  PageHeader,
+  LoadingSpinner,
+  EmptyState,
+  CalendarIcon,
+  CheckIcon,
+  CopyIcon,
+  AddIcon,
+  ShareIcon,
+} from '../../components';
 
 type ShareToken = { id: number; token: string; active: boolean; createdAt: string; description?: string | null };
 type Clinician = { id: number; name: string; role: string };
@@ -69,29 +79,14 @@ function CopyButton({ url, label }: { url: string; label: string }) {
         size="lg"
       >
         {copied ? (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
+          <CheckIcon size={18} />
         ) : (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-          </svg>
+          <CopyIcon size={18} />
         )}
       </ActionIcon>
     </Tooltip>
   );
 }
-
-// Calendar icon
-const CalendarIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-    <line x1="16" y1="2" x2="16" y2="6"/>
-    <line x1="8" y1="2" x2="8" y2="6"/>
-    <line x1="3" y1="10" x2="21" y2="10"/>
-  </svg>
-);
 
 export const ShareTokensPage: React.FC = () => {
   const qc = useQueryClient();
@@ -132,75 +127,28 @@ export const ShareTokensPage: React.FC = () => {
 
   return (
     <Box>
-      {/* Page Header */}
-      <Box mb={32}>
-        <Text
-          style={{
-            fontSize: '2rem',
-            fontWeight: 700,
-            color: '#1d1d1f',
-            letterSpacing: '-0.025em',
-            marginBottom: 8,
-          }}
-        >
-          Share Links
-        </Text>
-        <Text style={{ fontSize: '1.0625rem', color: '#86868b' }}>
-          Share calendar links with your team to sync with Google Calendar, Outlook, or Apple Calendar
-        </Text>
-      </Box>
+      <PageHeader
+        title="Share Links"
+        subtitle="Share calendar links with your team to sync with Google Calendar, Outlook, or Apple Calendar"
+      />
 
-      {isLoading && (
-        <Box ta="center" py={60}>
-          <Loader size="lg" color="#0071e3" />
-        </Box>
-      )}
+      {isLoading && <LoadingSpinner />}
 
       {!isLoading && !activeToken && (
-        <Box
-          ta="center"
-          py={60}
-          style={{
-            backgroundColor: '#ffffff',
-            borderRadius: 16,
-            border: '1px solid rgba(0, 0, 0, 0.06)',
-          }}
-        >
-          <Box
-            style={{
-              width: 64,
-              height: 64,
-              backgroundColor: '#f5f5f7',
-              borderRadius: 16,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 16px',
-            }}
-          >
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#86868b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="18" cy="5" r="3"/>
-              <circle cx="6" cy="12" r="3"/>
-              <circle cx="18" cy="19" r="3"/>
-              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
-              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-            </svg>
-          </Box>
-          <Text fw={500} c="#1d1d1f" mb={4}>No share token created</Text>
-          <Text c="dimmed" size="sm" mb={16}>Create a token to enable calendar sharing</Text>
-          <Button
-            onClick={() => createMutation.mutate()}
-            loading={createMutation.isPending}
-            leftSection={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-            }
-          >
-            Create Share Token
-          </Button>
-        </Box>
+        <EmptyState
+          icon={<ShareIcon size={28} color="#86868b" strokeWidth={1.5} />}
+          title="No share token created"
+          message="Create a token to enable calendar sharing"
+          action={
+            <Button
+              onClick={() => createMutation.mutate()}
+              loading={createMutation.isPending}
+              leftSection={<AddIcon />}
+            >
+              Create Share Token
+            </Button>
+          }
+        />
       )}
 
       {!isLoading && activeToken && (
@@ -235,7 +183,7 @@ export const ShareTokensPage: React.FC = () => {
                             justifyContent: 'center',
                           }}
                         >
-                          <CalendarIcon />
+                          <CalendarIcon size={18} />
                         </Box>
                         <Box>
                           <Text fw={500} c="#1d1d1f">{clinician.name}</Text>

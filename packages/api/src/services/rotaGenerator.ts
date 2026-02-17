@@ -1,7 +1,8 @@
 import { prisma } from '../prisma.js';
 import type { Session, RotaSource } from '../types/enums.js';
-import type { OnCallConfig, OnCallSlot, OnCallPattern, SlotAssignment, Duty } from '@prisma/client';
+import type { Duty } from '@prisma/client';
 import { formatDateString, dateRange, weekOfMonth, getDayOfWeek } from '../utils/dateHelpers.js';
+import { getOncallClinicianForDate, type SlotBasedData } from './oncallCalculator.js';
 
 // Rest day entry type
 interface RestDayEntry {
@@ -10,74 +11,6 @@ interface RestDayEntry {
   session: Session;
   dutyId: number | null;  // null = OFF, non-null = SPA duty
   isOff: boolean;
-}
-
-// Slot-based on-call clinician picker
-interface SlotBasedData {
-  config: OnCallConfig | null;
-  slots: OnCallSlot[];
-  patterns: OnCallPattern[];  // Only for registrars
-  assignments: SlotAssignment[];
-}
-
-function pickOncallClinicianSlotBased(
-  date: Date,
-  role: 'consultant' | 'registrar',
-  data: SlotBasedData
-): number | null {
-  const { config, slots, patterns, assignments } = data;
-
-  if (!config || slots.length === 0) return null;
-
-  // Use string-based date comparison to avoid timezone issues
-  const dateStr = formatDateString(date);
-  const startDateStr = formatDateString(config.startDate);
-
-  // Calculate days difference using UTC timestamps of midnight
-  const dateMs = Date.parse(dateStr + 'T00:00:00Z');
-  const startDateMs = Date.parse(startDateStr + 'T00:00:00Z');
-  const daysSinceStart = Math.round((dateMs - startDateMs) / (1000 * 60 * 60 * 24));
-
-  let slotId: number;
-
-  if (role === 'consultant') {
-    // Consultants: week N = slot with position N (implicit pattern)
-    const weeksSinceStart = Math.floor(daysSinceStart / 7);
-    const weekOfCycle = ((weeksSinceStart % config.cycleLength) + config.cycleLength) % config.cycleLength;
-    const position = weekOfCycle + 1; // 1-indexed
-    const slot = slots.find(s => s.position === position);
-    if (!slot) return null;
-    slotId = slot.id;
-  } else {
-    // Registrars: use explicit pattern if available, otherwise implicit round-robin
-    const dayOfCycle = ((daysSinceStart % config.cycleLength) + config.cycleLength) % config.cycleLength + 1;
-
-    if (patterns.length > 0) {
-      // Explicit pattern configured - use it
-      const pattern = patterns.find(p => p.dayOfCycle === dayOfCycle);
-      if (!pattern) return null;
-      slotId = pattern.slotId;
-    } else {
-      // No explicit pattern - use implicit round-robin (like consultants but daily)
-      // Day N of cycle = slot ((N-1) mod numSlots) + 1
-      const position = ((dayOfCycle - 1) % slots.length) + 1;
-      const slot = slots.find(s => s.position === position);
-      if (!slot) return null;
-      slotId = slot.id;
-    }
-  }
-
-  // Find active assignment for this slot on this date - use string comparison
-  const assignment = assignments.find(a => {
-    if (a.slotId !== slotId) return false;
-
-    const fromStr = formatDateString(a.effectiveFrom);
-    const toStr = a.effectiveTo ? formatDateString(a.effectiveTo) : '9999-12-31';
-
-    return fromStr <= dateStr && toStr >= dateStr;
-  });
-
-  return assignment?.clinicianId ?? null;
 }
 
 // Compute rest days for registrars based on on-call assignments
@@ -109,7 +42,7 @@ function computeRestDaysForRegistrars(
     const dayOfWeek = getDayOfWeek(date); // 1=Mon, 2=Tue, ..., 5=Fri, 6=Sat, 7=Sun
 
     for (const clinicianId of registrarClinicianIds) {
-      const oncallId = pickOncallClinicianSlotBased(date, 'registrar', registrarData);
+      const oncallId = getOncallClinicianForDate(date, 'registrar', registrarData);
       if (oncallId !== clinicianId) continue;
 
       // This registrar is on-call on this date
@@ -267,7 +200,7 @@ export async function generateRota(from: Date, to: Date) {
 
       // Determine on-call clinician using slot-based system
       const isConsultant = clinician.role === 'consultant';
-      const oncallClinicianId = pickOncallClinicianSlotBased(
+      const oncallClinicianId = getOncallClinicianForDate(
         date,
         clinician.role as 'consultant' | 'registrar',
         isConsultant ? consultantData : registrarData

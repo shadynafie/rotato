@@ -1,8 +1,14 @@
-import { Badge, Box, Button, Group, Loader, NumberInput, Select, SimpleGrid, Table, Text, TextInput } from '@mantine/core';
+import { Badge, Box, Button, Group, NumberInput, Select, SimpleGrid, Table, Text, TextInput } from '@mantine/core';
 import { notify } from '../../utils/notify';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import {
+  PageHeader,
+  LoadingSpinner,
+  SaveIcon,
+  PhoneIcon,
+} from '../../components';
 
 type Slot = { role: 'consultant' | 'registrar'; cycleLength: number; position: number; clinicianId: number; startDate?: string | null };
 type Clinician = { id: number; name: string; role: 'consultant' | 'registrar' };
@@ -125,46 +131,21 @@ export const OncallPage: React.FC = () => {
 
   return (
     <Box>
-      {/* Page Header */}
-      <Group justify="space-between" mb={32}>
-        <Box>
-          <Text
-            style={{
-              fontSize: '2rem',
-              fontWeight: 700,
-              color: '#1d1d1f',
-              letterSpacing: '-0.025em',
-              marginBottom: 8,
-            }}
+      <PageHeader
+        title="On-Call Cycles"
+        subtitle="Configure rotating on-call schedules for consultants and registrars"
+        actions={
+          <Button
+            onClick={() => saveMutation.mutate()}
+            loading={saveMutation.isPending}
+            leftSection={<SaveIcon />}
           >
-            On-Call Cycles
-          </Text>
-          <Text style={{ fontSize: '1.0625rem', color: '#86868b' }}>
-            Configure rotating on-call schedules for consultants and registrars
-          </Text>
-        </Box>
-        <Button
-          onClick={() => saveMutation.mutate()}
-          loading={saveMutation.isPending}
-          leftSection={
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-              <polyline points="17 21 17 13 7 13 7 21"/>
-              <polyline points="7 3 7 8 15 8"/>
-            </svg>
-          }
-        >
-          Save Changes
-        </Button>
-      </Group>
+            Save Changes
+          </Button>
+        }
+      />
 
-      {/* Loading State */}
-      {isLoading && (
-        <Box ta="center" py={60}>
-          <Loader size="lg" color="#0071e3" />
-          <Text mt="md" c="dimmed">Loading on-call cycles...</Text>
-        </Box>
-      )}
+      {isLoading && <LoadingSpinner message="Loading on-call cycles..." />}
 
       {data && (
         <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
@@ -199,9 +180,7 @@ export const OncallPage: React.FC = () => {
                       justifyContent: 'center',
                     }}
                   >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0071e3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
-                    </svg>
+                    <PhoneIcon size={20} color="#0071e3" />
                   </Box>
                   <Box>
                     <Text fw={600} c="#1d1d1f">Consultants</Text>
@@ -317,9 +296,7 @@ export const OncallPage: React.FC = () => {
                       justifyContent: 'center',
                     }}
                   >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#af52de" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
-                    </svg>
+                    <PhoneIcon size={20} color="#af52de" />
                   </Box>
                   <Box>
                     <Text fw={600} c="#1d1d1f">Registrars</Text>

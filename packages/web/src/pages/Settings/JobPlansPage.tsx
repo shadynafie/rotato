@@ -1,9 +1,17 @@
-import { Badge, Box, Button, Group, Loader, Select, Stack, Tabs, Table, Text } from '@mantine/core';
+import { Box, Button, Select, Stack, Tabs, Table, Text } from '@mantine/core';
 import { notify } from '../../utils/notify';
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import { getSurname } from '../../utils/formatters';
+import {
+  PageHeader,
+  LoadingSpinner,
+  EmptyState,
+  RoleBadge,
+  SaveIcon,
+  UsersIcon,
+} from '../../components';
 
 type Clinician = { id: number; name: string; role: 'consultant' | 'registrar' };
 type Duty = { id: number; name: string };
@@ -128,54 +136,37 @@ export const JobPlansPage: React.FC = () => {
   };
 
   const hasChanges = Object.keys(dirty).length > 0;
-  const currentWeekNo = Number(activeWeek);
 
   return (
     <Box>
-      {/* Page Header */}
-      <Group justify="space-between" mb={32}>
-        <Box>
-          <Text
-            style={{
-              fontSize: '2rem',
-              fontWeight: 700,
-              color: '#1d1d1f',
-              letterSpacing: '-0.025em',
-              marginBottom: 8,
-            }}
+      <PageHeader
+        title="Job Plans"
+        subtitle="Configure weekly duty schedules for each clinician (Mon-Fri, Week 1-5 repeating monthly)"
+        actions={
+          <Button
+            onClick={() => saveMutation.mutate()}
+            loading={saveMutation.isPending}
+            disabled={!hasChanges}
+            leftSection={<SaveIcon />}
           >
-            Job Plans
-          </Text>
-          <Text style={{ fontSize: '1.0625rem', color: '#86868b' }}>
-            Configure weekly duty schedules for each clinician (Mon-Fri, Week 1-5 repeating monthly)
-          </Text>
-        </Box>
-        <Button
-          onClick={() => saveMutation.mutate()}
-          loading={saveMutation.isPending}
-          disabled={!hasChanges}
-          leftSection={
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-              <polyline points="17 21 17 13 7 13 7 21"/>
-              <polyline points="7 3 7 8 15 8"/>
-            </svg>
-          }
-        >
-          {hasChanges ? 'Save Changes' : 'No Changes'}
-        </Button>
-      </Group>
+            {hasChanges ? 'Save Changes' : 'No Changes'}
+          </Button>
+        }
+      />
 
-      {/* Loading State */}
-      {isLoading && (
-        <Box ta="center" py={60}>
-          <Loader size="lg" color="#0071e3" />
-          <Text mt="md" c="dimmed">Loading job plans...</Text>
-        </Box>
+      {isLoading && <LoadingSpinner message="Loading job plans..." />}
+
+      {/* Empty State */}
+      {data && data.clinicians.length === 0 && (
+        <EmptyState
+          icon={<UsersIcon size={28} color="#86868b" strokeWidth={1.5} />}
+          title="No clinicians found"
+          message="Add clinicians first to configure their job plans"
+        />
       )}
 
       {/* Week Tabs and Table */}
-      {data && (
+      {data && data.clinicians.length > 0 && (
         <Box
           style={{
             backgroundColor: '#ffffff',
@@ -225,16 +216,7 @@ export const JobPlansPage: React.FC = () => {
                           <Table.Td style={{ position: 'sticky', left: 0, backgroundColor: '#fff', zIndex: 1 }}>
                             <Box>
                               <Text fw={500} c="#1d1d1f" size="sm">{c.name}</Text>
-                              <Badge
-                                variant="light"
-                                color={c.role === 'consultant' ? 'blue' : 'grape'}
-                                radius="md"
-                                size="xs"
-                                mt={4}
-                                tt="capitalize"
-                              >
-                                {c.role}
-                              </Badge>
+                              <RoleBadge role={c.role} />
                             </Box>
                           </Table.Td>
                           {days.map((day) => {
@@ -318,41 +300,6 @@ export const JobPlansPage: React.FC = () => {
               </Tabs.Panel>
             ))}
           </Tabs>
-        </Box>
-      )}
-
-      {/* Empty State */}
-      {data && data.clinicians.length === 0 && (
-        <Box
-          ta="center"
-          py={60}
-          style={{
-            backgroundColor: '#ffffff',
-            borderRadius: 16,
-            border: '1px solid rgba(0, 0, 0, 0.06)',
-          }}
-        >
-          <Box
-            style={{
-              width: 64,
-              height: 64,
-              backgroundColor: '#f5f5f7',
-              borderRadius: 16,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 16px',
-            }}
-          >
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#86868b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-            </svg>
-          </Box>
-          <Text fw={500} c="#1d1d1f" mb={4}>No clinicians found</Text>
-          <Text c="dimmed" size="sm">Add clinicians first to configure their job plans</Text>
         </Box>
       )}
     </Box>
