@@ -231,12 +231,26 @@ export async function publicRoutes(app: FastifyInstance) {
     // Get or create the subscribe token
     const token = await getSubscribeToken();
 
-    // Build the base URL from request
-    const host = (request.headers['x-forwarded-host'] || request.headers.host) as string;
-    // Use HTTPS for real domains, HTTP only for localhost
-    const isLocalhost = host?.startsWith('localhost') || host?.startsWith('127.0.0.1');
-    const protocol = isLocalhost ? 'http' : 'https';
-    const baseUrl = `${protocol}://${host}`;
+    // Build the base URL
+    // Option 1: Use PUBLIC_URL env var if set (recommended for production)
+    // Option 2: Detect from request headers
+    let baseUrl = process.env.PUBLIC_URL;
+
+    if (!baseUrl) {
+      const forwardedHost = request.headers['x-forwarded-host'] as string | undefined;
+      const forwardedProto = request.headers['x-forwarded-proto'] as string | undefined;
+      const origin = request.headers.origin as string | undefined;
+      const hostHeader = request.headers.host as string;
+
+      // Extract domain from origin if available
+      const originHost = origin ? origin.replace(/^https?:\/\//, '') : undefined;
+      const host = forwardedHost || originHost || hostHeader;
+
+      // Use forwarded proto, or HTTPS for real domains
+      const isLocalhost = host?.startsWith('localhost') || host?.startsWith('127.0.0.1');
+      const protocol = forwardedProto || (isLocalhost ? 'http' : 'https');
+      baseUrl = `${protocol}://${host}`;
+    }
 
     // The iCal URL for this clinician
     const icalUrl = `${baseUrl}/public/${token}/ical?clinician=${clinicianId}`;
