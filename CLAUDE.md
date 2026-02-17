@@ -118,6 +118,28 @@ Backend versions of `getSurname`, `formatLeaveLabel`, `formatDutyDisplay` for iC
 
 **Important**: When displaying registrar duties with a supporting consultant, always use the "Surname Duty" format (e.g., "Smith Clinic"). Use `formatDutyDisplay()` for consistency.
 
+## Public Routes (No Auth Required)
+
+### Subscribe Flow (`/subscribe`)
+Mobile-friendly QR code onboarding for clinicians to add their personal calendar:
+1. Scan QR code → Select grade (Consultant/Registrar) → Select name → Add to calendar
+2. URLs are built **client-side** using `window.location.origin` (never server-side)
+3. API endpoints: `/subscribe/clinicians`, `/subscribe/token`
+
+### iCal Generation (`/public/:token/ical`)
+- Uses `ics` library with **namespace import**: `import * as ics from 'ics'` (no default export)
+- All-day events must calculate next day using Date objects to handle month boundaries:
+  ```typescript
+  const nextDay = new Date(year, month - 1, day + 1);
+  end: [nextDay.getFullYear(), nextDay.getMonth() + 1, nextDay.getDate()]
+  ```
+- Never use `day + 1` directly as it fails on month-end dates (e.g., March 31 → March 32)
+
+### Other Public Endpoints
+- `/public/:token/schedule` - Computed schedule JSON
+- `/public/:token/oncall-today` - Today's on-call clinicians
+- `/view/:token` - Public calendar view page
+
 ## Conventions
 
 - UK date format (dd/mm/yyyy), 12-hour clock, Europe/London timezone
