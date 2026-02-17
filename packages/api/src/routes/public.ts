@@ -232,8 +232,10 @@ export async function publicRoutes(app: FastifyInstance) {
     const token = await getSubscribeToken();
 
     // Build the base URL from request
-    const protocol = request.headers['x-forwarded-proto'] || 'http';
-    const host = request.headers['x-forwarded-host'] || request.headers.host;
+    const host = (request.headers['x-forwarded-host'] || request.headers.host) as string;
+    // Use HTTPS for real domains, HTTP only for localhost
+    const isLocalhost = host?.startsWith('localhost') || host?.startsWith('127.0.0.1');
+    const protocol = isLocalhost ? 'http' : 'https';
     const baseUrl = `${protocol}://${host}`;
 
     // The iCal URL for this clinician
