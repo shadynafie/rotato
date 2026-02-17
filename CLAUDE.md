@@ -70,10 +70,34 @@ SQLite doesn't support enums, so these are stored as strings:
 RotaEntry uniqueness: `[date, clinicianId, session]`
 
 ### Coverage Request System
-- Auto-created when registrar takes leave and was supporting a consultant
+- Auto-created when registrar takes leave and has a duty (consultant-supporting or independent)
 - `absentRegistrarId` tracks which registrar's absence caused the coverage need
+- `consultantId` is optional (null for independent registrar duties like TULA)
+- `supportingClinicianId` on RotaEntry links registrar manual assignments to consultants
 - Auto-deleted when the associated leave is cancelled
 - Cleanup endpoint: `POST /api/coverage/cleanup-orphaned` removes orphaned requests
+
+### Coverage Suggester Scoring Algorithm
+Smart suggestions for coverage assignment using unit pricing model (0-100 scale):
+
+**Positive factors (more available = higher score):**
+- Days since last coverage: +2 pts/day (cap 30 days = +60 max)
+- Days since last on-call: +1 pt/day (cap 30 days = +30 max)
+
+**Negative factors (busier = lower score):**
+- On-calls in 30 days: -8 pts each (counts unique dates, not AM/PM entries)
+- Duties in 30 days: -3 pts each
+- Coverages in 30 days: -5 pts each
+- Covered in last 3 days: -15 pts penalty
+- Covered yesterday: additional -10 pts penalty
+
+**Normalization:** Raw score mapped from [-150, +90] to [0, 100] with clamping.
+- Forgotten registrar (no activity): ~100
+- Extremely busy registrar: ~0
+
+Key implementation notes:
+- "Days since" queries only look at PAST dates (not future assignments)
+- On-call counts use distinct dates (on-call spans full day with AM+PM entries)
 
 ## Environment
 

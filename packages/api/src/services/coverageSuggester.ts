@@ -6,14 +6,37 @@ type Session = 'AM' | 'PM';
 
 type UnavailabilityReason = 'leave' | 'rest_day' | 'on_call' | 'already_assigned';
 
+// Scoring constants - unit pricing model
+const SCORING = {
+  // Points per unit (positive = better availability)
+  DAYS_SINCE_COVERAGE: 2,    // +2 per day since last coverage (cap at 30 days = +60 max)
+  DAYS_SINCE_ONCALL: 1,      // +1 per day since last on-call (cap at 30 days = +30 max)
+  PER_ONCALL: -8,            // -8 per on-call in last 30 days
+  PER_DUTY: -3,              // -3 per duty in last 30 days
+  PER_COVERAGE: -5,          // -5 per coverage in last 30 days
+  RECENT_3_DAYS_PENALTY: -15, // penalty if covered in last 3 days
+  YESTERDAY_PENALTY: -10,     // additional penalty if covered yesterday
+
+  // Normalization bounds (based on typical scenarios)
+  // MAX_RAW = 90 (forgotten registrar: 30 days * 2 + 30 days * 1 = 90)
+  // MIN_RAW = -150 (extremely busy: 6 on-calls * -8 + 20 duties * -3 + 4 coverages * -5 + penalties)
+  MAX_RAW: 90,
+  MIN_RAW: -150,
+  RANGE: 240
+};
+
 interface SuggestedRegistrar {
   clinicianId: number;
   clinicianName: string;
   grade: string | null;
   score: number;
   reasons: string[];
-  workloadCount: number;
-  lastAssignedDate: string | null;
+  // Detailed metrics for transparency
+  dutiesIn30Days: number;
+  oncallsIn30Days: number;
+  coveragesIn30Days: number;
+  daysSinceCoverage: number | null;
+  daysSinceOncall: number | null;
 }
 
 interface UnavailableRegistrar {
@@ -45,10 +68,22 @@ const unavailabilityLabels: Record<UnavailabilityReason, string> = {
 /**
  * Get smart suggestions for registrar coverage assignment.
  *
- * Scoring (0-100 scale):
- * - Workload: 0-50 points (fewer assignments in last 30 days = higher)
- * - Recency: 0-30 points (longer since last assignment = higher)
- * - First-timer bonus: +20 points (never assigned before)
+ * Scoring uses a unit pricing model normalized to 0-100:
+ *
+ * Positive factors (higher = more available):
+ * - Days since last coverage: +2 pts/day (cap 30 days = +60 max)
+ * - Days since last on-call: +1 pt/day (cap 30 days = +30 max)
+ *
+ * Negative factors (busier = lower score):
+ * - On-calls in 30 days: -8 pts each
+ * - Duties in 30 days: -3 pts each
+ * - Coverages in 30 days: -5 pts each
+ * - Covered in last 3 days: -15 pts
+ * - Covered yesterday: additional -10 pts
+ *
+ * Normalization: rawScore mapped from [-150, +90] to [0, 100] with clamping.
+ * - Forgotten registrar (no activity): ~100
+ * - Extremely busy registrar: ~0
  *
  * Also returns unavailable registrars with reasons.
  */
@@ -107,8 +142,8 @@ export async function getSuggestedRegistrars(
   });
   const alreadyAssignedIds = new Set(existingAssignments.map(a => a.assignedRegistrarId!));
 
-  // Get workload counts (coverage assignments in last 30 days)
-  const workloadCounts = await prisma.coverageRequest.groupBy({
+  // Get coverage counts in last 30 days
+  const coverageCounts = await prisma.coverageRequest.groupBy({
     by: ['assignedRegistrarId'],
     where: {
       assignedRegistrarId: { in: registrarIds },
@@ -117,15 +152,16 @@ export async function getSuggestedRegistrars(
     },
     _count: { id: true }
   });
-  const workloadMap = new Map(
-    workloadCounts.map(w => [w.assignedRegistrarId!, w._count.id])
+  const coverageMap = new Map(
+    coverageCounts.map(w => [w.assignedRegistrarId!, w._count.id])
   );
 
-  // Get last assignment date for each registrar
-  const lastAssignments = await prisma.coverageRequest.findMany({
+  // Get last coverage assignment date for each registrar (only past dates)
+  const lastCoverages = await prisma.coverageRequest.findMany({
     where: {
       assignedRegistrarId: { in: registrarIds },
-      status: 'assigned'
+      status: 'assigned',
+      date: { lt: date }  // Only past dates, not today or future
     },
     orderBy: { date: 'desc' },
     distinct: ['assignedRegistrarId'],
@@ -134,12 +170,61 @@ export async function getSuggestedRegistrars(
       date: true
     }
   });
-  const lastAssignmentMap = new Map(
-    lastAssignments.map(a => [a.assignedRegistrarId!, a.date])
+  const lastCoverageMap = new Map(
+    lastCoverages.map(a => [a.assignedRegistrarId!, a.date])
   );
 
-  // Calculate max workload for normalization (minimum 1 to avoid division by zero)
-  const maxWorkload = Math.max(1, ...Array.from(workloadMap.values()));
+  // Get duty counts in last 30 days (from RotaEntry)
+  const dutyCounts = await prisma.rotaEntry.groupBy({
+    by: ['clinicianId'],
+    where: {
+      clinicianId: { in: registrarIds },
+      date: { gte: thirtyDaysAgo, lte: date },
+      dutyId: { not: null }
+    },
+    _count: { id: true }
+  });
+  const dutyMap = new Map(
+    dutyCounts.map(d => [d.clinicianId, d._count.id])
+  );
+
+  // Get on-call counts in last 30 days (count unique DATES, not entries)
+  // On-call spans full day but may have AM+PM entries, so we count distinct dates
+  const oncallEntries = await prisma.rotaEntry.findMany({
+    where: {
+      clinicianId: { in: registrarIds },
+      date: { gte: thirtyDaysAgo, lte: date },
+      source: 'oncall'
+    },
+    distinct: ['clinicianId', 'date'],
+    select: {
+      clinicianId: true,
+      date: true
+    }
+  });
+  // Count unique dates per clinician
+  const oncallMap = new Map<number, number>();
+  for (const entry of oncallEntries) {
+    oncallMap.set(entry.clinicianId, (oncallMap.get(entry.clinicianId) || 0) + 1);
+  }
+
+  // Get last on-call date for each registrar (only past dates)
+  const lastOncalls = await prisma.rotaEntry.findMany({
+    where: {
+      clinicianId: { in: registrarIds },
+      source: 'oncall',
+      date: { lt: date }  // Only past dates, not today or future
+    },
+    orderBy: { date: 'desc' },
+    distinct: ['clinicianId'],
+    select: {
+      clinicianId: true,
+      date: true
+    }
+  });
+  const lastOncallMap = new Map(
+    lastOncalls.map(o => [o.clinicianId, o.date])
+  );
 
   const available: SuggestedRegistrar[] = [];
   const unavailable: UnavailableRegistrar[] = [];
@@ -192,53 +277,106 @@ export async function getSuggestedRegistrars(
       continue;
     }
 
-    // Calculate score (0-100 scale)
-    const workloadCount = workloadMap.get(registrar.id) || 0;
-    const lastAssigned = lastAssignmentMap.get(registrar.id);
-    const reasons: string[] = [];
+    // Gather metrics for scoring
+    const coveragesIn30Days = coverageMap.get(registrar.id) || 0;
+    const dutiesIn30Days = dutyMap.get(registrar.id) || 0;
+    const oncallsIn30Days = oncallMap.get(registrar.id) || 0;
+    const lastCoverage = lastCoverageMap.get(registrar.id);
+    const lastOncall = lastOncallMap.get(registrar.id);
 
-    // Workload score: 0-50 points (fewer assignments = higher)
-    const workloadScore = Math.round(50 * (1 - workloadCount / maxWorkload));
-
-    if (workloadCount === 0) {
-      reasons.push('No recent assignments');
-    } else if (workloadCount <= 2) {
-      reasons.push(`Light workload (${workloadCount} in 30 days)`);
-    } else {
-      reasons.push(`${workloadCount} assignments in 30 days`);
+    // Calculate days since last coverage
+    let daysSinceCoverage: number | null = null;
+    if (lastCoverage) {
+      daysSinceCoverage = Math.floor(
+        (date.getTime() - new Date(lastCoverage).getTime()) / (1000 * 60 * 60 * 24)
+      );
     }
 
-    // Recency score: 0-30 points (longer since last = higher, cap at 15 days)
-    let recencyScore = 0;
-    if (lastAssigned) {
-      const daysSinceAssignment = Math.floor(
-        (date.getTime() - new Date(lastAssigned).getTime()) / (1000 * 60 * 60 * 24)
+    // Calculate days since last on-call
+    let daysSinceOncall: number | null = null;
+    if (lastOncall) {
+      daysSinceOncall = Math.floor(
+        (date.getTime() - new Date(lastOncall).getTime()) / (1000 * 60 * 60 * 24)
       );
-      recencyScore = Math.min(30, daysSinceAssignment * 2);
+    }
 
-      if (daysSinceAssignment >= 14) {
-        reasons.push(`${daysSinceAssignment} days since last`);
+    // Check if covered in last 3 days or yesterday
+    const coveredInLast3Days = daysSinceCoverage !== null && daysSinceCoverage <= 3;
+    const coveredYesterday = daysSinceCoverage !== null && daysSinceCoverage <= 1;
+
+    // Calculate raw score using unit pricing
+    let rawScore = 0;
+
+    // Days since last coverage: +2 per day (cap at 30 days = +60 max)
+    // If never covered, treat as 30+ days (maximum benefit)
+    const effectiveDaysSinceCoverage = daysSinceCoverage === null ? 30 : Math.min(daysSinceCoverage, 30);
+    rawScore += effectiveDaysSinceCoverage * SCORING.DAYS_SINCE_COVERAGE;
+
+    // Days since last on-call: +1 per day (cap at 30 days = +30 max)
+    // If never on-call, treat as 30+ days (maximum benefit)
+    const effectiveDaysSinceOncall = daysSinceOncall === null ? 30 : Math.min(daysSinceOncall, 30);
+    rawScore += effectiveDaysSinceOncall * SCORING.DAYS_SINCE_ONCALL;
+
+    // On-calls in 30 days: -8 per on-call
+    rawScore += oncallsIn30Days * SCORING.PER_ONCALL;
+
+    // Duties in 30 days: -3 per duty
+    rawScore += dutiesIn30Days * SCORING.PER_DUTY;
+
+    // Coverages in 30 days: -5 per coverage
+    rawScore += coveragesIn30Days * SCORING.PER_COVERAGE;
+
+    // Recent coverage penalties
+    if (coveredInLast3Days) {
+      rawScore += SCORING.RECENT_3_DAYS_PENALTY;
+    }
+    if (coveredYesterday) {
+      rawScore += SCORING.YESTERDAY_PENALTY;
+    }
+
+    // Normalize to 0-100 scale with clamping
+    const normalizedScore = Math.round(
+      Math.max(0, Math.min(100,
+        ((rawScore - SCORING.MIN_RAW) / SCORING.RANGE) * 100
+      ))
+    );
+
+    // Build reasons array for transparency
+    const reasons: string[] = [];
+
+    if (coveragesIn30Days === 0 && dutiesIn30Days === 0 && oncallsIn30Days === 0) {
+      reasons.push('No recent activity');
+    } else {
+      if (coveragesIn30Days > 0) {
+        reasons.push(`${coveragesIn30Days} coverage${coveragesIn30Days > 1 ? 's' : ''} in 30d`);
+      }
+      if (oncallsIn30Days > 0) {
+        reasons.push(`${oncallsIn30Days} on-call${oncallsIn30Days > 1 ? 's' : ''} in 30d`);
+      }
+      if (dutiesIn30Days > 0) {
+        reasons.push(`${dutiesIn30Days} ${dutiesIn30Days === 1 ? 'duty' : 'duties'} in 30d`);
       }
     }
 
-    // First-timer bonus: +20 points
-    let bonusScore = 0;
-    if (!lastAssigned) {
-      bonusScore = 20;
-      reasons.push('Never assigned before');
+    if (coveredYesterday) {
+      reasons.push('Covered yesterday');
+    } else if (coveredInLast3Days) {
+      reasons.push('Covered recently');
+    } else if (daysSinceCoverage !== null && daysSinceCoverage >= 14) {
+      reasons.push(`${daysSinceCoverage}d since last coverage`);
     }
-
-    // Total score (cap at 100)
-    const score = Math.min(100, workloadScore + recencyScore + bonusScore);
 
     available.push({
       clinicianId: registrar.id,
       clinicianName: registrar.name,
       grade: registrar.grade,
-      score,
+      score: normalizedScore,
       reasons,
-      workloadCount,
-      lastAssignedDate: lastAssigned ? formatDateString(new Date(lastAssigned)) : null
+      dutiesIn30Days,
+      oncallsIn30Days,
+      coveragesIn30Days,
+      daysSinceCoverage,
+      daysSinceOncall
     });
   }
 

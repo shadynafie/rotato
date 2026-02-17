@@ -52,7 +52,8 @@ export async function rotaRoutes(app: FastifyInstance) {
         session: z.enum(['AM', 'PM']),
         dutyId: z.number().nullable().optional(),
         isOncall: z.boolean().optional(),
-        note: z.string().nullable().optional()
+        note: z.string().nullable().optional(),
+        supportingClinicianId: z.number().nullable().optional()
       })
       .parse(request.body);
 
@@ -77,6 +78,7 @@ export async function rotaRoutes(app: FastifyInstance) {
           dutyId: body.dutyId ?? null,
           isOncall: body.isOncall ?? false,
           note: body.note ?? null,
+          supportingClinicianId: body.supportingClinicianId ?? null,
           source: 'manual',
           updatedBy: request.user?.sub
         }
@@ -99,6 +101,7 @@ export async function rotaRoutes(app: FastifyInstance) {
           dutyId: body.dutyId ?? null,
           isOncall: body.isOncall ?? false,
           note: body.note ?? null,
+          supportingClinicianId: body.supportingClinicianId ?? null,
           source: 'manual',
           createdBy: request.user?.sub
         }

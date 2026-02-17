@@ -17,9 +17,10 @@ import {
 const coverageCreateSchema = z.object({
   date: z.string().transform((s) => new Date(s)),
   session: z.enum(['AM', 'PM']),
-  consultantId: z.number(),
+  consultantId: z.number().nullable().optional(),  // Optional for independent duties
   dutyId: z.number(),
   reason: z.enum(['leave', 'oncall_conflict', 'manual']),
+  absentRegistrarId: z.number().nullable().optional(),  // Track absent registrar
   note: z.string().optional()
 });
 
@@ -70,7 +71,8 @@ export async function coverageRoutes(app: FastifyInstance) {
       include: {
         consultant: true,
         duty: true,
-        assignedRegistrar: true
+        assignedRegistrar: true,
+        absentRegistrar: true
       },
       orderBy: [{ date: 'asc' }, { session: 'asc' }]
     });
@@ -135,7 +137,13 @@ export async function coverageRoutes(app: FastifyInstance) {
 
     const created = await prisma.coverageRequest.create({
       data: {
-        ...body,
+        date: body.date,
+        session: body.session,
+        consultantId: body.consultantId ?? null,
+        dutyId: body.dutyId,
+        reason: body.reason,
+        absentRegistrarId: body.absentRegistrarId ?? null,
+        note: body.note,
         status: 'pending'
       },
       include: {

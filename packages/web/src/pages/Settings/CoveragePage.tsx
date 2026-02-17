@@ -3,7 +3,7 @@ import { notify } from '../../utils/notify';
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
-import { formatDateWithWeekday } from '../../utils/formatters';
+import { formatDateWithWeekday, getSurname } from '../../utils/formatters';
 
 type Clinician = {
   id: number;
@@ -22,12 +22,14 @@ type CoverageRequest = {
   id: number;
   date: string;
   session: 'AM' | 'PM';
-  consultantId: number;
-  consultant: Clinician;
+  consultantId?: number | null;
+  consultant?: Clinician | null;
   dutyId: number;
   duty: Duty;
   reason: 'leave' | 'oncall_conflict' | 'manual';
   status: 'pending' | 'assigned' | 'cancelled';
+  absentRegistrarId?: number | null;
+  absentRegistrar?: Clinician | null;
   assignedRegistrarId?: number | null;
   assignedRegistrar?: Clinician | null;
   assignedAt?: string | null;
@@ -40,8 +42,11 @@ type SuggestedRegistrar = {
   grade: string | null;
   score: number;
   reasons: string[];
-  workloadCount: number;
-  lastAssignedDate: string | null;
+  dutiesIn30Days: number;
+  oncallsIn30Days: number;
+  coveragesIn30Days: number;
+  daysSinceCoverage: number | null;
+  daysSinceOncall: number | null;
 };
 
 type UnavailableRegistrar = {
@@ -68,9 +73,21 @@ const fetchSuggestions = async (requestId: number) => {
 };
 
 const reasonLabels: Record<string, string> = {
-  leave: 'Leave',
+  leave: 'On Leave',
   oncall_conflict: 'On-call Conflict',
-  manual: 'Manual',
+  manual: 'Manual Request',
+};
+
+// Format the "covering for" display
+const formatCoveringFor = (request: CoverageRequest): { text: string; subtext?: string } => {
+  if (request.absentRegistrar) {
+    return {
+      text: request.absentRegistrar.name,
+      subtext: reasonLabels[request.reason] || request.reason
+    };
+  }
+  // Fallback for older requests without absentRegistrar
+  return { text: reasonLabels[request.reason] || request.reason };
 };
 
 const statusColors: Record<string, string> = {
@@ -327,9 +344,9 @@ export const CoveragePage: React.FC = () => {
               <Table.Tr style={{ backgroundColor: '#fafafa' }}>
                 <Table.Th>Date</Table.Th>
                 <Table.Th>Session</Table.Th>
-                <Table.Th>Consultant</Table.Th>
+                <Table.Th>Covering For</Table.Th>
                 <Table.Th>Activity</Table.Th>
-                <Table.Th>Reason</Table.Th>
+                <Table.Th>Consultant</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Assigned To</Table.Th>
                 <Table.Th style={{ width: 100 }}>Actions</Table.Th>
@@ -352,7 +369,17 @@ export const CoveragePage: React.FC = () => {
                     </Badge>
                   </Table.Td>
                   <Table.Td>
-                    <Text c="#1d1d1f">{r.consultant.name}</Text>
+                    {(() => {
+                      const covering = formatCoveringFor(r);
+                      return (
+                        <Box>
+                          <Text c="#1d1d1f" fw={500}>{covering.text}</Text>
+                          {covering.subtext && (
+                            <Text size="xs" c="dimmed">{covering.subtext}</Text>
+                          )}
+                        </Box>
+                      );
+                    })()}
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs">
@@ -370,7 +397,11 @@ export const CoveragePage: React.FC = () => {
                     </Group>
                   </Table.Td>
                   <Table.Td>
-                    <Text c="dimmed" size="sm">{reasonLabels[r.reason] || r.reason}</Text>
+                    {r.consultant ? (
+                      <Text c="#1d1d1f">{r.consultant.name}</Text>
+                    ) : (
+                      <Text c="dimmed" size="sm" fs="italic">Independent</Text>
+                    )}
                   </Table.Td>
                   <Table.Td>
                     <Badge
@@ -487,15 +518,36 @@ export const CoveragePage: React.FC = () => {
       >
         {selectedRequest && (
           <Box>
-            <Box mb={16} p={12} style={{ backgroundColor: '#f5f5f7', borderRadius: 8 }}>
-              <Text size="sm" c="dimmed">Activity Details</Text>
-              <Text fw={500}>{selectedRequest.duty.name}</Text>
-              <Text size="sm" c="dimmed" mt={4}>
+            <Box mb={16} p={14} style={{ backgroundColor: '#f5f5f7', borderRadius: 12 }}>
+              <Group gap="sm" align="center" mb={4}>
+                {selectedRequest.duty.color && (
+                  <Box
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: '50%',
+                      backgroundColor: selectedRequest.duty.color,
+                    }}
+                  />
+                )}
+                <Text fw={600} size="lg" c="#1d1d1f">
+                  {selectedRequest.consultant
+                    ? `${getSurname(selectedRequest.consultant.name)} ${selectedRequest.duty.name}`
+                    : selectedRequest.duty.name}
+                </Text>
+              </Group>
+              <Text size="sm" c="dimmed" mb={4}>
                 {formatDateWithWeekday(selectedRequest.date)} - {selectedRequest.session}
               </Text>
-              <Text size="sm" c="dimmed">
-                Covering for: {selectedRequest.consultant.name}
-              </Text>
+              {selectedRequest.absentRegistrar && (
+                <Text size="sm" c="#1d1d1f">
+                  {selectedRequest.absentRegistrar.name}{' '}
+                  <Text span c="dimmed">({reasonLabels[selectedRequest.reason]})</Text>
+                </Text>
+              )}
+              {!selectedRequest.consultant && !selectedRequest.absentRegistrar && (
+                <Text size="sm" c="dimmed" fs="italic">Independent duty</Text>
+              )}
             </Box>
 
             <Text fw={500} mb={12}>Available Registrars</Text>
@@ -555,13 +607,8 @@ export const CoveragePage: React.FC = () => {
                         </Group>
                         <Group gap="md">
                           <Text size="xs" c="dimmed">
-                            Workload: {suggestion.workloadCount} in last 30 days
+                            30d: {suggestion.coveragesIn30Days} coverages, {suggestion.oncallsIn30Days} on-calls, {suggestion.dutiesIn30Days} duties
                           </Text>
-                          {suggestion.lastAssignedDate && (
-                            <Text size="xs" c="dimmed">
-                              Last assigned: {formatDateWithWeekday(suggestion.lastAssignedDate)}
-                            </Text>
-                          )}
                         </Group>
                       </Box>
                       <Box style={{ textAlign: 'right', minWidth: 80 }}>
@@ -725,9 +772,16 @@ export const CoveragePage: React.FC = () => {
               <Text size="xs" c="dimmed">
                 {formatDateWithWeekday(requestToDelete.date)} - {requestToDelete.session}
               </Text>
-              <Text size="xs" c="dimmed">
-                Consultant: {requestToDelete.consultant.name}
-              </Text>
+              {requestToDelete.absentRegistrar && (
+                <Text size="xs" c="dimmed">
+                  Absent: {requestToDelete.absentRegistrar.name}
+                </Text>
+              )}
+              {requestToDelete.consultant && (
+                <Text size="xs" c="dimmed">
+                  Consultant: {requestToDelete.consultant.name}
+                </Text>
+              )}
             </Box>
             <Group justify="flex-end" gap="sm">
               <Button

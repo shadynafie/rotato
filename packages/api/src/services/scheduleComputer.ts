@@ -235,8 +235,8 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
     dutyId: number;
     dutyName: string;
     dutyColor: string | null;
-    consultantId: number;
-    consultantName: string;
+    consultantId: number | null;
+    consultantName: string | null;
   }>();
   coverageAssignments.forEach((c) => {
     const dateStr = formatDateString(new Date(c.date));
@@ -246,7 +246,7 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
       dutyName: c.duty.name,
       dutyColor: c.duty.color,
       consultantId: c.consultantId,
-      consultantName: c.consultant.name
+      consultantName: c.consultant?.name ?? null
     });
   });
 
@@ -279,33 +279,12 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
         const coverageKey = `${clinician.id}-${dateStr}-${session}`;
         const coverage = coverageMap.get(coverageKey);
 
-        // Priority: Manual override > Leave > Rest (registrar recovery) > Coverage assignment > On-call > Job plan
+        // Priority: Leave > Manual override > Rest (registrar recovery) > Coverage assignment > On-call > Job plan
+        // Leave always takes precedence for display (coverage requests are created separately)
         let entry: ScheduleEntry;
 
-        if (manual) {
-          // Manual override takes precedence
-          const duty = manual.dutyId ? dutyMap.get(manual.dutyId) : null;
-          entry = {
-            date: dateStr,
-            clinicianId: clinician.id,
-            clinicianName: clinician.name,
-            clinicianRole: clinician.role as 'consultant' | 'registrar',
-            session,
-            dutyId: manual.dutyId,
-            dutyName: duty?.name ?? null,
-            dutyColor: duty?.color ?? null,
-            isOncall: manual.isOncall,
-            isLeave: false,
-            leaveType: null,
-            source: 'manual',
-            manualOverrideId: manual.id,
-            supportingClinicianId: null,
-            supportingClinicianName: null,
-            isRest: false,
-            isRestOff: false
-          };
-        } else if (leave && (leave.session === 'FULL' || leave.session === session)) {
-          // Leave
+        if (leave && (leave.session === 'FULL' || leave.session === session)) {
+          // Leave takes precedence for display
           entry = {
             date: dateStr,
             clinicianId: clinician.id,
@@ -322,6 +301,30 @@ export async function computeSchedule(from: Date, to: Date): Promise<ScheduleEnt
             manualOverrideId: null,
             supportingClinicianId: null,
             supportingClinicianName: null,
+            isRest: false,
+            isRestOff: false
+          };
+        } else if (manual) {
+          // Manual override
+          const duty = manual.dutyId ? dutyMap.get(manual.dutyId) : null;
+          const manualSupportingClinicianId = manual.supportingClinicianId ?? null;
+          const manualSupportingClinician = manualSupportingClinicianId ? clinicianMap.get(manualSupportingClinicianId) : null;
+          entry = {
+            date: dateStr,
+            clinicianId: clinician.id,
+            clinicianName: clinician.name,
+            clinicianRole: clinician.role as 'consultant' | 'registrar',
+            session,
+            dutyId: manual.dutyId,
+            dutyName: duty?.name ?? null,
+            dutyColor: duty?.color ?? null,
+            isOncall: manual.isOncall,
+            isLeave: false,
+            leaveType: null,
+            source: 'manual',
+            manualOverrideId: manual.id,
+            supportingClinicianId: manualSupportingClinicianId,
+            supportingClinicianName: manualSupportingClinician?.name ?? null,
             isRest: false,
             isRestOff: false
           };

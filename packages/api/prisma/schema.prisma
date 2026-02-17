@@ -167,6 +167,8 @@ model RotaEntry {
   isOncall    Boolean    @default(false)
   source      String     // "jobplan" | "oncall" | "manual" | "leave"
   note        String?
+  // For registrar manual entries: which consultant they are supporting
+  supportingClinicianId Int?
   createdBy   Int?
   updatedBy   Int?
   createdByUser User?    @relation("createdByUser", fields: [createdBy], references: [id])
@@ -234,8 +236,8 @@ model CoverageRequest {
   id                  Int        @id @default(autoincrement())
   date                DateTime
   session             String     // "AM" | "PM"
-  consultantId        Int
-  consultant          Clinician  @relation("CoverageConsultant", fields: [consultantId], references: [id])
+  consultantId        Int?       // Optional: null for independent registrar duties
+  consultant          Clinician? @relation("CoverageConsultant", fields: [consultantId], references: [id])
   dutyId              Int
   duty                Duty       @relation(fields: [dutyId], references: [id])
   reason              String     // "leave" | "oncall_conflict" | "manual"
@@ -250,8 +252,9 @@ model CoverageRequest {
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
 
-  @@unique([date, session, consultantId, dutyId])
+  @@unique([date, session, dutyId, absentRegistrarId])
   @@index([date])
   @@index([status])
   @@index([absentRegistrarId])
+  @@index([consultantId])
 }

@@ -5,7 +5,7 @@ import { weekOfMonth, getDayOfWeek, isWeekday } from '../utils/dateHelpers.js';
 export interface CoverageNeed {
   date: Date;
   session: 'AM' | 'PM';
-  consultantId: number;
+  consultantId: number | null;  // null for independent registrar duties
   dutyId: number;
   reason: CoverageReason;
   // The registrar who is on leave (for tracking purposes)
@@ -15,113 +15,49 @@ export interface CoverageNeed {
 /**
  * Detect coverage needs for a date range.
  *
- * Coverage is triggered when a REGISTRAR is on leave and they were:
- * 1. Assigned to support a consultant for a duty (via supportingClinicianId)
- * 2. That duty requires registrar support
+ * Coverage is triggered when a REGISTRAR is on leave and they have:
+ * 1. A job plan entry with a duty (with or without supportingClinicianId)
+ * 2. A manual RotaEntry with a duty (with or without supportingClinicianId)
+ *
+ * Two types of coverage needs:
+ * - Consultant-supporting: registrar was supporting a consultant's clinic
+ * - Independent: registrar had an independent duty (e.g., TULA)
  *
  * When a consultant is on leave, no coverage is needed because:
  * - Clinic: registrar can continue independently
  * - Theatre: list is cancelled, registrar is freed
  */
 export async function detectCoverageNeeds(from: Date, to: Date): Promise<CoverageNeed[]> {
-  const needs: CoverageNeed[] = [];
-
-  // Get registrar job plans where they support a consultant
-  const registrarJobPlans = await prisma.jobPlanWeek.findMany({
-    where: {
-      clinician: { role: 'registrar', active: true },
-      OR: [
-        { amSupportingClinicianId: { not: null } },
-        { pmSupportingClinicianId: { not: null } }
-      ]
-    },
-    include: {
-      clinician: true,
-      amDuty: true,
-      pmDuty: true
-    }
-  });
-
-  // Create a lookup: registrarId -> weekNo -> dayOfWeek -> job plan entry
-  const planLookup = new Map<string, {
-    amDutyId: number | null;
-    pmDutyId: number | null;
-    amSupportingClinicianId: number | null;
-    pmSupportingClinicianId: number | null;
-    amRequiresRegistrar: boolean;
-    pmRequiresRegistrar: boolean;
-  }>();
-
-  for (const plan of registrarJobPlans) {
-    const key = `${plan.clinicianId}-${plan.weekNo}-${plan.dayOfWeek}`;
-    planLookup.set(key, {
-      amDutyId: plan.amDutyId,
-      pmDutyId: plan.pmDutyId,
-      amSupportingClinicianId: plan.amSupportingClinicianId,
-      pmSupportingClinicianId: plan.pmSupportingClinicianId,
-      amRequiresRegistrar: plan.amDuty?.requiresRegistrar || false,
-      pmRequiresRegistrar: plan.pmDuty?.requiresRegistrar || false
-    });
-  }
-
-  // Get all leaves in the date range for REGISTRARS
+  // Use the per-clinician detection for each registrar with leave
   const leaves = await prisma.leave.findMany({
     where: {
       date: { gte: from, lte: to },
       clinician: { role: 'registrar', active: true }
     },
-    include: { clinician: true }
+    select: { clinicianId: true }
   });
 
-  // For each registrar leave, check if they were supporting a consultant
-  for (const leave of leaves) {
-    const leaveDate = new Date(leave.date);
+  // Get unique clinician IDs
+  const clinicianIds = [...new Set(leaves.map(l => l.clinicianId))];
 
-    // Skip weekends
-    if (!isWeekday(leaveDate)) continue;
-
-    const weekNo = weekOfMonth(leaveDate);
-    const dayOfWeek = getDayOfWeek(leaveDate);
-    const planKey = `${leave.clinicianId}-${weekNo}-${dayOfWeek}`;
-    const plan = planLookup.get(planKey);
-
-    if (!plan) continue;
-
-    // Check AM session - if registrar was supporting a consultant
-    if ((leave.session === 'AM' || leave.session === 'FULL') &&
-        plan.amSupportingClinicianId &&
-        plan.amDutyId) {
-      needs.push({
-        date: leaveDate,
-        session: 'AM',
-        consultantId: plan.amSupportingClinicianId,
-        dutyId: plan.amDutyId,
-        reason: 'leave',
-        absentRegistrarId: leave.clinicianId
-      });
-    }
-
-    // Check PM session
-    if ((leave.session === 'PM' || leave.session === 'FULL') &&
-        plan.pmSupportingClinicianId &&
-        plan.pmDutyId) {
-      needs.push({
-        date: leaveDate,
-        session: 'PM',
-        consultantId: plan.pmSupportingClinicianId,
-        dutyId: plan.pmDutyId,
-        reason: 'leave',
-        absentRegistrarId: leave.clinicianId
-      });
-    }
+  // Detect needs for each clinician
+  const allNeeds: CoverageNeed[] = [];
+  for (const clinicianId of clinicianIds) {
+    const clinicianNeeds = await detectCoverageNeedsForClinician(clinicianId, from, to);
+    allNeeds.push(...clinicianNeeds);
   }
 
-  return needs;
+  return allNeeds;
 }
 
 /**
  * Detect coverage needs for a specific clinician in a date range.
- * Now handles registrars - finds duties they were supporting.
+ * Now handles registrars - finds duties from BOTH job plans AND manual entries.
+ *
+ * Coverage is created for:
+ * 1. Job plan entries with supportingClinicianId (consultant-supporting duty)
+ * 2. Manual RotaEntry records with supportingClinicianId (consultant-supporting duty)
+ * 3. Manual RotaEntry records with dutyId but no supportingClinicianId (independent duty)
  */
 export async function detectCoverageNeedsForClinician(
   clinicianId: number,
@@ -140,13 +76,13 @@ export async function detectCoverageNeedsForClinician(
     return needs;
   }
 
-  // Get job plans for this registrar where they support a consultant
+  // Get job plans for this registrar (with duties assigned)
   const jobPlans = await prisma.jobPlanWeek.findMany({
     where: {
       clinicianId,
       OR: [
-        { amSupportingClinicianId: { not: null } },
-        { pmSupportingClinicianId: { not: null } }
+        { amDutyId: { not: null } },
+        { pmDutyId: { not: null } }
       ]
     },
     include: {
@@ -155,7 +91,7 @@ export async function detectCoverageNeedsForClinician(
     }
   });
 
-  // Create lookup
+  // Create job plan lookup
   const planLookup = new Map<string, {
     amDutyId: number | null;
     pmDutyId: number | null;
@@ -173,6 +109,42 @@ export async function detectCoverageNeedsForClinician(
     });
   }
 
+  // Get manual RotaEntry records for this registrar in the date range
+  const manualEntries = await prisma.rotaEntry.findMany({
+    where: {
+      clinicianId,
+      date: { gte: from, lte: to },
+      source: 'manual',
+      dutyId: { not: null }
+    }
+  });
+
+  // Create manual entry lookup: dateStr-session -> entry
+  const manualLookup = new Map<string, {
+    dutyId: number;
+    supportingClinicianId: number | null;
+  }>();
+
+  for (const entry of manualEntries) {
+    const dateStr = new Date(entry.date).toISOString().split('T')[0];
+    // Handle FULL session as both AM and PM
+    if (entry.session === 'FULL') {
+      manualLookup.set(`${dateStr}-AM`, {
+        dutyId: entry.dutyId!,
+        supportingClinicianId: entry.supportingClinicianId
+      });
+      manualLookup.set(`${dateStr}-PM`, {
+        dutyId: entry.dutyId!,
+        supportingClinicianId: entry.supportingClinicianId
+      });
+    } else {
+      manualLookup.set(`${dateStr}-${entry.session}`, {
+        dutyId: entry.dutyId!,
+        supportingClinicianId: entry.supportingClinicianId
+      });
+    }
+  }
+
   // Get leaves for this registrar in the date range
   const leaves = await prisma.leave.findMany({
     where: {
@@ -181,44 +153,88 @@ export async function detectCoverageNeedsForClinician(
     }
   });
 
+  // Track which needs we've already added to avoid duplicates
+  const addedNeeds = new Set<string>();
+
   for (const leave of leaves) {
     const leaveDate = new Date(leave.date);
 
     if (!isWeekday(leaveDate)) continue;
 
+    const dateStr = leaveDate.toISOString().split('T')[0];
     const weekNo = weekOfMonth(leaveDate);
     const dayOfWeek = getDayOfWeek(leaveDate);
     const planKey = `${weekNo}-${dayOfWeek}`;
     const plan = planLookup.get(planKey);
 
-    if (!plan) continue;
+    // Process AM session
+    if (leave.session === 'AM' || leave.session === 'FULL') {
+      const manualAm = manualLookup.get(`${dateStr}-AM`);
 
-    // AM session coverage
-    if ((leave.session === 'AM' || leave.session === 'FULL') &&
-        plan.amSupportingClinicianId &&
-        plan.amDutyId) {
-      needs.push({
-        date: leaveDate,
-        session: 'AM',
-        consultantId: plan.amSupportingClinicianId,
-        dutyId: plan.amDutyId,
-        reason: 'leave',
-        absentRegistrarId: clinicianId
-      });
+      // Priority: Manual entry takes precedence over job plan
+      if (manualAm) {
+        const needKey = `${dateStr}-AM-${manualAm.dutyId}-${manualAm.supportingClinicianId || 'independent'}`;
+        if (!addedNeeds.has(needKey)) {
+          needs.push({
+            date: leaveDate,
+            session: 'AM',
+            consultantId: manualAm.supportingClinicianId,  // null for independent duties
+            dutyId: manualAm.dutyId,
+            reason: 'leave',
+            absentRegistrarId: clinicianId
+          });
+          addedNeeds.add(needKey);
+        }
+      } else if (plan?.amDutyId) {
+        // Fall back to job plan
+        const needKey = `${dateStr}-AM-${plan.amDutyId}-${plan.amSupportingClinicianId || 'independent'}`;
+        if (!addedNeeds.has(needKey)) {
+          needs.push({
+            date: leaveDate,
+            session: 'AM',
+            consultantId: plan.amSupportingClinicianId,  // null for independent duties
+            dutyId: plan.amDutyId,
+            reason: 'leave',
+            absentRegistrarId: clinicianId
+          });
+          addedNeeds.add(needKey);
+        }
+      }
     }
 
-    // PM session coverage
-    if ((leave.session === 'PM' || leave.session === 'FULL') &&
-        plan.pmSupportingClinicianId &&
-        plan.pmDutyId) {
-      needs.push({
-        date: leaveDate,
-        session: 'PM',
-        consultantId: plan.pmSupportingClinicianId,
-        dutyId: plan.pmDutyId,
-        reason: 'leave',
-        absentRegistrarId: clinicianId
-      });
+    // Process PM session
+    if (leave.session === 'PM' || leave.session === 'FULL') {
+      const manualPm = manualLookup.get(`${dateStr}-PM`);
+
+      // Priority: Manual entry takes precedence over job plan
+      if (manualPm) {
+        const needKey = `${dateStr}-PM-${manualPm.dutyId}-${manualPm.supportingClinicianId || 'independent'}`;
+        if (!addedNeeds.has(needKey)) {
+          needs.push({
+            date: leaveDate,
+            session: 'PM',
+            consultantId: manualPm.supportingClinicianId,  // null for independent duties
+            dutyId: manualPm.dutyId,
+            reason: 'leave',
+            absentRegistrarId: clinicianId
+          });
+          addedNeeds.add(needKey);
+        }
+      } else if (plan?.pmDutyId) {
+        // Fall back to job plan
+        const needKey = `${dateStr}-PM-${plan.pmDutyId}-${plan.pmSupportingClinicianId || 'independent'}`;
+        if (!addedNeeds.has(needKey)) {
+          needs.push({
+            date: leaveDate,
+            session: 'PM',
+            consultantId: plan.pmSupportingClinicianId,  // null for independent duties
+            dutyId: plan.pmDutyId,
+            reason: 'leave',
+            absentRegistrarId: clinicianId
+          });
+          addedNeeds.add(needKey);
+        }
+      }
     }
   }
 
@@ -227,21 +243,19 @@ export async function detectCoverageNeedsForClinician(
 
 /**
  * Create coverage requests for detected needs.
- * Skips if a request already exists for the same date/session/consultant/duty.
+ * Skips if a request already exists for the same date/session/duty/absentRegistrar.
  */
 export async function createCoverageRequests(needs: CoverageNeed[]): Promise<number> {
   let created = 0;
 
   for (const need of needs) {
     // Check if request already exists
-    const existing = await prisma.coverageRequest.findUnique({
+    const existing = await prisma.coverageRequest.findFirst({
       where: {
-        date_session_consultantId_dutyId: {
-          date: need.date,
-          session: need.session,
-          consultantId: need.consultantId,
-          dutyId: need.dutyId
-        }
+        date: need.date,
+        session: need.session,
+        dutyId: need.dutyId,
+        absentRegistrarId: need.absentRegistrarId ?? null
       }
     });
 
@@ -250,7 +264,7 @@ export async function createCoverageRequests(needs: CoverageNeed[]): Promise<num
         data: {
           date: need.date,
           session: need.session,
-          consultantId: need.consultantId,
+          consultantId: need.consultantId,  // can be null for independent duties
           dutyId: need.dutyId,
           reason: need.reason,
           status: 'pending',

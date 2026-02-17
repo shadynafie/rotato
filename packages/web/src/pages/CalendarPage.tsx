@@ -53,6 +53,7 @@ interface Duty {
 interface EditingCell {
   clinicianId: number;
   clinicianName: string;
+  clinicianRole: 'consultant' | 'registrar';
   date: string;
   session: 'AM' | 'PM';
   currentEntry: ScheduleEntry | null;
@@ -156,6 +157,7 @@ interface OverridePayload {
   dutyId: number | null;
   isOncall: boolean;
   note: string | null;
+  supportingClinicianId: number | null;
 }
 
 const createOverride = async (payload: OverridePayload) => {
@@ -179,6 +181,7 @@ export const CalendarPage: React.FC = () => {
   const [editDutyId, setEditDutyId] = useState<string | null>(null);
   const [editIsOncall, setEditIsOncall] = useState(false);
   const [editNote, setEditNote] = useState('');
+  const [editSupportingClinicianId, setEditSupportingClinicianId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -268,10 +271,12 @@ export const CalendarPage: React.FC = () => {
       setEditDutyId(cell.currentEntry.dutyId?.toString() || null);
       setEditIsOncall(cell.currentEntry.isOncall);
       setEditNote('');
+      setEditSupportingClinicianId(cell.currentEntry.supportingClinicianId?.toString() || null);
     } else {
       setEditDutyId(null);
       setEditIsOncall(false);
       setEditNote('');
+      setEditSupportingClinicianId(null);
     }
   };
 
@@ -285,6 +290,7 @@ export const CalendarPage: React.FC = () => {
       dutyId: editDutyId ? parseInt(editDutyId) : null,
       isOncall: editIsOncall,
       note: editNote || null,
+      supportingClinicianId: editSupportingClinicianId ? parseInt(editSupportingClinicianId) : null,
     });
   };
 
@@ -357,6 +363,36 @@ export const CalendarPage: React.FC = () => {
 
     return Array.from(clinicianMap.values());
   }, [scheduleQuery.data]);
+
+  // Fetch consultant schedule for selected date (for supporting clinician dropdown)
+  const consultantScheduleQuery = useQuery({
+    queryKey: ['consultant-schedule', editingCell?.date],
+    queryFn: () => fetchSchedule(editingCell!.date, editingCell!.date),
+    enabled: !!editingCell && editingCell.clinicianRole === 'registrar',
+    select: (data) => data.filter(e => e.clinicianRole === 'consultant'),
+  });
+
+  // Get consultant options for supporting clinician dropdown
+  const getConsultantOptionsForDuty = (dutyId: number | null, session: 'AM' | 'PM') => {
+    if (!dutyId || !consultantScheduleQuery.data) return [];
+
+    const options: { value: string; label: string }[] = [];
+    const seenConsultants = new Set<number>();
+
+    for (const entry of consultantScheduleQuery.data) {
+      if (entry.session === session && entry.dutyId === dutyId && !seenConsultants.has(entry.clinicianId)) {
+        seenConsultants.add(entry.clinicianId);
+        const dutyName = entry.dutyName || 'Duty';
+        const surname = getSurname(entry.clinicianName);
+        options.push({
+          value: entry.clinicianId.toString(),
+          label: `${surname} ${dutyName}`
+        });
+      }
+    }
+
+    return options;
+  };
 
   // Helper to get display info for a session entry
   const getDisplayInfo = (entry: ScheduleEntry | null) => {
@@ -770,6 +806,7 @@ export const CalendarPage: React.FC = () => {
                           onClick={() => openEditModal({
                             clinicianId: row.clinicianId,
                             clinicianName: row.clinicianName,
+                            clinicianRole: row.clinicianRole,
                             date: selectedDate,
                             session: 'AM',
                             currentEntry: row.amEntry,
@@ -799,6 +836,7 @@ export const CalendarPage: React.FC = () => {
                           onClick={() => openEditModal({
                             clinicianId: row.clinicianId,
                             clinicianName: row.clinicianName,
+                            clinicianRole: row.clinicianRole,
                             date: selectedDate,
                             session: 'PM',
                             currentEntry: row.pmEntry,
@@ -888,6 +926,7 @@ export const CalendarPage: React.FC = () => {
                           onClick={() => openEditModal({
                             clinicianId: row.clinicianId,
                             clinicianName: row.clinicianName,
+                            clinicianRole: row.clinicianRole,
                             date: selectedDate,
                             session: 'AM',
                             currentEntry: row.amEntry,
@@ -917,6 +956,7 @@ export const CalendarPage: React.FC = () => {
                           onClick={() => openEditModal({
                             clinicianId: row.clinicianId,
                             clinicianName: row.clinicianName,
+                            clinicianRole: row.clinicianRole,
                             date: selectedDate,
                             session: 'PM',
                             currentEntry: row.pmEntry,
@@ -1037,6 +1077,7 @@ export const CalendarPage: React.FC = () => {
                                   onClick={() => openEditModal({
                                     clinicianId: row.clinicianId,
                                     clinicianName: row.clinicianName,
+                                    clinicianRole: row.clinicianRole,
                                     date: date,
                                     session: 'AM',
                                     currentEntry: dayData?.am || null,
@@ -1065,6 +1106,7 @@ export const CalendarPage: React.FC = () => {
                                   onClick={() => openEditModal({
                                     clinicianId: row.clinicianId,
                                     clinicianName: row.clinicianName,
+                                    clinicianRole: row.clinicianRole,
                                     date: date,
                                     session: 'PM',
                                     currentEntry: dayData?.pm || null,
@@ -1181,6 +1223,7 @@ export const CalendarPage: React.FC = () => {
                                   onClick={() => openEditModal({
                                     clinicianId: row.clinicianId,
                                     clinicianName: row.clinicianName,
+                                    clinicianRole: row.clinicianRole,
                                     date: date,
                                     session: 'AM',
                                     currentEntry: dayData?.am || null,
@@ -1209,6 +1252,7 @@ export const CalendarPage: React.FC = () => {
                                   onClick={() => openEditModal({
                                     clinicianId: row.clinicianId,
                                     clinicianName: row.clinicianName,
+                                    clinicianRole: row.clinicianRole,
                                     date: date,
                                     session: 'PM',
                                     currentEntry: dayData?.pm || null,
@@ -1507,10 +1551,30 @@ export const CalendarPage: React.FC = () => {
                 })),
               ]}
               value={editDutyId || ''}
-              onChange={(v) => setEditDutyId(v || null)}
+              onChange={(v) => {
+                setEditDutyId(v || null);
+                // Clear supporting clinician when duty changes
+                setEditSupportingClinicianId(null);
+              }}
               mb={16}
               clearable
             />
+
+            {/* Supporting Clinician dropdown - only for registrars with a duty selected */}
+            {editingCell.clinicianRole === 'registrar' && editDutyId && (
+              <Select
+                label="Supporting Consultant"
+                description="Which consultant's clinic is the registrar attending?"
+                placeholder={consultantScheduleQuery.isLoading ? 'Loading...' : 'Select consultant (optional)'}
+                data={getConsultantOptionsForDuty(parseInt(editDutyId), editingCell.session)}
+                value={editSupportingClinicianId || ''}
+                onChange={(v) => setEditSupportingClinicianId(v || null)}
+                mb={16}
+                clearable
+                disabled={consultantScheduleQuery.isLoading}
+                nothingFoundMessage="No consultants have this duty on this date/session"
+              />
+            )}
 
             <Switch
               label="On-call"
