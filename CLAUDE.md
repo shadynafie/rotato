@@ -110,6 +110,7 @@ RotaEntry uniqueness: `[date, clinicianId, session]`
 
 ### Coverage Request System
 - Auto-created when registrar takes leave and has a duty (consultant-supporting or independent)
+- **Also auto-created after rota generation** to catch any existing leaves in the generated date range
 - **Only creates requests for duties with `requiresCoverage: true`** (Admin, SPA, MDT are excluded)
 - `absentRegistrarId` tracks which registrar's absence caused the coverage need
 - `absentConsultantId` tracks consultant coverage needs (when consultant is on-call or on leave)

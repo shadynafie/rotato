@@ -14,10 +14,12 @@ Rotato helps clinical teams manage their on-call rotas and duty schedules. It's 
 
 - **On-Call Schedules** — Set up rotating on-call patterns for consultants and registrars using a slot-based system
 - **Job Plans** — Define weekly duty templates (clinics, theatres, admin) that repeat automatically
+- **Automatic Regeneration** — Rota regenerates monthly; manual regeneration also available
 - **Supporting Clinicians** — Link registrars to the consultants they're supporting for each clinic/theatre
 - **Leave Management** — Track annual leave, study leave, sick days, and professional leave with colour-coded calendar display
 - **Rest Days** — Automatic rest day calculation for registrars after on-call shifts
-- **Coverage Suggestions** — When a registrar is on leave, get smart suggestions for who can cover (auto-cleanup when leave is cancelled)
+- **Coverage Suggestions** — When a registrar is on leave, get smart suggestions for who can cover (with filtering and auto-assign)
+- **Configurable Duties** — Choose which duties require coverage tracking (skip Admin, SPA, etc.)
 - **Shareable Calendar** — Generate a link anyone can view (no login required)
 - **iCal Feed** — Sync with Google Calendar, Outlook, or your phone
 
@@ -110,10 +112,25 @@ When a registrar goes on leave, their supporting consultant may need cover. Rota
 
 1. Click **Coverage** in the menu
 2. You'll see pending coverage requests (automatically created when registrars take leave)
-3. Click on a request to see suggested registrars who are available
-4. Assign a registrar to provide cover, or use **Auto-Assign** for smart suggestions
+3. Use the **filter chips** to find specific requests:
+   - **Status:** Pending, Assigned, or Cancelled
+   - **Type:** Registrar or Consultant coverage
+   - **Reason:** On Leave, On-call Conflict, or Manual
+4. Click on a request to see suggested registrars who are available
+5. Assign a registrar to provide cover, or use **Auto-Assign** for smart suggestions
 
 > **Note:** If a leave is cancelled, any associated coverage requests are automatically removed.
+
+#### Regenerating the Rota
+
+The rota automatically regenerates on the **1st of each month** (covering the next 3 months). You can also regenerate manually:
+
+1. Click **Calendar** in the menu
+2. Click **Regenerate Rota** button
+3. Choose the date range to regenerate
+4. Any existing leaves will have coverage requests created automatically
+
+> **Note:** Manual overrides are preserved during regeneration. Only job-plan and on-call entries are recalculated.
 
 #### Sharing the Rota
 
@@ -134,6 +151,14 @@ These are configured once and rarely need changing.
 2. Click **Add Clinician** to add a new team member
 3. Set their role (Consultant or Registrar)
 4. For registrars, set their grade (Junior or Senior) — useful for matching cover
+
+#### Configuring Duty Types
+
+1. Expand **Settings** → click **Duty Types**
+2. Each duty has a **Requires Coverage** toggle:
+   - **On (default):** Coverage requests are created when clinicians are absent from this duty
+   - **Off:** No coverage tracking for this duty (useful for Admin, SPA, MDT)
+3. Set colours for each duty type to make the calendar easier to read
 
 #### Setting Up Job Plans
 
@@ -180,6 +205,12 @@ A: When a registrar is assigned to a clinic or theatre, the "Supporting" field s
 
 **Q: What happens if someone is on leave during their on-call?**
 A: The leave will be shown on the calendar. You'll need to arrange cover manually and can add a manual override if needed.
+
+**Q: Does the rota update automatically?**
+A: Yes! On the 1st of each month at 2:00 AM, Rotato automatically regenerates the rota for the next 3 months. You can also regenerate manually from the Calendar page.
+
+**Q: Why don't I see coverage requests for Admin or SPA duties?**
+A: Some duties (Admin, SPA, MDT) have "Requires Coverage" turned off by default. You can change this in **Settings** → **Duty Types**.
 
 **Q: Can I export the rota to Excel?**
 A: Not yet, but you can use the iCal feed to sync with calendar apps, or use the public view link to share with colleagues.
