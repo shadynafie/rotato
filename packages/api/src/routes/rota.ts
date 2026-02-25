@@ -6,6 +6,7 @@ import { generateRota } from '../services/rotaGenerator.js';
 import { RotaSources } from '../types/enums.js';
 import { logAudit } from '../utils/audit.js';
 import { sendChangeNotification } from '../utils/notifications.js';
+import { detectCoverageNeeds, createCoverageRequests } from '../services/coverageDetector.js';
 
 export async function rotaRoutes(app: FastifyInstance) {
   app.get('/api/rota', { preHandler: requireAuth }, async (request) => {
@@ -40,7 +41,12 @@ export async function rotaRoutes(app: FastifyInstance) {
       .parse(request.body);
 
     await generateRota(body.from, body.to);
-    return { ok: true };
+
+    // After rota generation, detect and create coverage requests for existing leaves
+    const coverageNeeds = await detectCoverageNeeds(body.from, body.to);
+    const created = await createCoverageRequests(coverageNeeds);
+
+    return { ok: true, coverageRequestsCreated: created };
   });
 
   // Create or update a manual override

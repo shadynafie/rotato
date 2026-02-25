@@ -1,6 +1,7 @@
 import cron, { ScheduledTask } from 'node-cron';
 import { generateRota } from './rotaGenerator.js';
 import { logAudit } from '../utils/audit.js';
+import { detectCoverageNeeds, createCoverageRequests } from './coverageDetector.js';
 
 /**
  * Scheduler service for automatic rota generation.
@@ -30,6 +31,11 @@ export function startScheduler() {
       console.log(`[Scheduler] Generating rota from ${from.toISOString()} to ${to.toISOString()}`);
 
       await generateRota(from, to);
+
+      // Detect and create coverage requests for existing leaves
+      const coverageNeeds = await detectCoverageNeeds(from, to);
+      const coverageCreated = await createCoverageRequests(coverageNeeds);
+      console.log(`[Scheduler] Created ${coverageCreated} coverage requests for existing leaves`);
 
       // Log to audit trail
       await logAudit({
@@ -88,6 +94,10 @@ export async function triggerManualRegeneration(): Promise<{ from: Date; to: Dat
   to.setHours(23, 59, 59, 999);
 
   await generateRota(from, to);
+
+  // Detect and create coverage requests for existing leaves
+  const coverageNeeds = await detectCoverageNeeds(from, to);
+  await createCoverageRequests(coverageNeeds);
 
   return { from, to };
 }
