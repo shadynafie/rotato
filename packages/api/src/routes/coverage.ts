@@ -10,6 +10,7 @@ import {
 } from '../services/coverageDetector.js';
 import {
   getSuggestedRegistrars,
+  getSuggestedConsultants,
   autoAssignCoverage,
   bulkAutoAssign
 } from '../services/coverageSuggester.js';
@@ -17,16 +18,19 @@ import {
 const coverageCreateSchema = z.object({
   date: z.string().transform((s) => new Date(s)),
   session: z.enum(['AM', 'PM']),
+  type: z.enum(['registrar', 'consultant']).optional().default('registrar'),
   consultantId: z.number().nullable().optional(),  // Optional for independent duties
   dutyId: z.number(),
   reason: z.enum(['leave', 'oncall_conflict', 'manual']),
   absentRegistrarId: z.number().nullable().optional(),  // Track absent registrar
+  absentConsultantId: z.number().nullable().optional(), // Track absent consultant (for consultant coverage)
   note: z.string().optional()
 });
 
 const coverageUpdateSchema = z.object({
   status: z.enum(['pending', 'assigned', 'cancelled']).optional(),
   assignedRegistrarId: z.number().nullable().optional(),
+  assignedConsultantId: z.number().nullable().optional(),
   note: z.string().optional()
 });
 
@@ -42,6 +46,7 @@ export async function coverageRoutes(app: FastifyInstance) {
       from: z.string().optional(),
       to: z.string().optional(),
       status: z.enum(['pending', 'assigned', 'cancelled']).optional(),
+      type: z.enum(['registrar', 'consultant']).optional(),
       consultantId: z.string().optional(),
       registrarId: z.string().optional()
     }).parse(request.query);
@@ -58,6 +63,10 @@ export async function coverageRoutes(app: FastifyInstance) {
       where.status = query.status;
     }
 
+    if (query.type) {
+      where.type = query.type;
+    }
+
     if (query.consultantId) {
       where.consultantId = parseInt(query.consultantId, 10);
     }
@@ -72,7 +81,9 @@ export async function coverageRoutes(app: FastifyInstance) {
         consultant: true,
         duty: true,
         assignedRegistrar: true,
-        absentRegistrar: true
+        absentRegistrar: true,
+        absentConsultant: true,
+        assignedConsultant: true
       },
       orderBy: [{ date: 'asc' }, { session: 'asc' }]
     });
@@ -139,16 +150,19 @@ export async function coverageRoutes(app: FastifyInstance) {
       data: {
         date: body.date,
         session: body.session,
+        type: body.type,
         consultantId: body.consultantId ?? null,
         dutyId: body.dutyId,
         reason: body.reason,
         absentRegistrarId: body.absentRegistrarId ?? null,
+        absentConsultantId: body.absentConsultantId ?? null,
         note: body.note,
         status: 'pending'
       },
       include: {
         consultant: true,
-        duty: true
+        duty: true,
+        absentConsultant: true
       }
     });
 
@@ -163,7 +177,7 @@ export async function coverageRoutes(app: FastifyInstance) {
     return created;
   });
 
-  // Update a coverage request (assign registrar, change status)
+  // Update a coverage request (assign registrar or consultant, change status)
   app.patch('/api/coverage/:id', { preHandler: requireAuth }, async (request) => {
     const id = Number((request.params as { id: string }).id);
     const body = coverageUpdateSchema.parse(request.body);
@@ -171,17 +185,32 @@ export async function coverageRoutes(app: FastifyInstance) {
     const before = await prisma.coverageRequest.findUnique({ where: { id } });
 
     const updateData: any = { ...body };
+    const sub = request.user?.sub;
+    const userId = typeof sub === 'number' ? sub : (typeof sub === 'string' ? parseInt(sub, 10) : null);
 
     // If assigning a registrar, also set status to assigned and record assignment time
     if (body.assignedRegistrarId !== undefined && body.assignedRegistrarId !== null) {
       updateData.status = 'assigned';
       updateData.assignedAt = new Date();
-      const sub = request.user?.sub;
-      updateData.assignedBy = typeof sub === 'number' ? sub : (typeof sub === 'string' ? parseInt(sub, 10) : null);
+      updateData.assignedBy = userId;
     }
 
-    // If unassigning (setting to null), revert to pending
+    // If assigning a consultant, also set status to assigned and record assignment time
+    if (body.assignedConsultantId !== undefined && body.assignedConsultantId !== null) {
+      updateData.status = 'assigned';
+      updateData.assignedAt = new Date();
+      updateData.assignedBy = userId;
+    }
+
+    // If unassigning registrar (setting to null), revert to pending
     if (body.assignedRegistrarId === null && before?.assignedRegistrarId !== null) {
+      updateData.status = 'pending';
+      updateData.assignedAt = null;
+      updateData.assignedBy = null;
+    }
+
+    // If unassigning consultant (setting to null), revert to pending
+    if (body.assignedConsultantId === null && before?.assignedConsultantId !== null) {
       updateData.status = 'pending';
       updateData.assignedAt = null;
       updateData.assignedBy = null;
@@ -193,7 +222,9 @@ export async function coverageRoutes(app: FastifyInstance) {
       include: {
         consultant: true,
         duty: true,
-        assignedRegistrar: true
+        assignedRegistrar: true,
+        absentConsultant: true,
+        assignedConsultant: true
       }
     });
 
@@ -258,12 +289,21 @@ export async function coverageRoutes(app: FastifyInstance) {
       return { available: [], unavailable: [], error: 'Coverage request not found' };
     }
 
-    const result = await getSuggestedRegistrars({
-      date: new Date(coverageRequest.date),
-      session: coverageRequest.session as 'AM' | 'PM'
-    });
-
-    return result;
+    // Use different suggester based on coverage type
+    if (coverageRequest.type === 'consultant') {
+      const result = await getSuggestedConsultants({
+        date: new Date(coverageRequest.date),
+        session: coverageRequest.session as 'AM' | 'PM',
+        excludeClinicianIds: coverageRequest.absentConsultantId ? [coverageRequest.absentConsultantId] : []
+      });
+      return result;
+    } else {
+      const result = await getSuggestedRegistrars({
+        date: new Date(coverageRequest.date),
+        session: coverageRequest.session as 'AM' | 'PM'
+      });
+      return result;
+    }
   });
 
   // Get smart suggestions for a specific date/session (without coverage request)
@@ -327,17 +367,33 @@ export async function coverageRoutes(app: FastifyInstance) {
 
     let deleted = 0;
     for (const cr of coverageRequests) {
-      // Check if there's a matching leave for this coverage request
-      const matchingLeave = await prisma.leave.findFirst({
-        where: {
-          date: cr.date,
-          OR: [
-            { session: cr.session },
-            { session: 'FULL' }
-          ],
-          clinician: { role: 'registrar' }
-        }
-      });
+      let matchingLeave = null;
+
+      if (cr.type === 'consultant' && cr.absentConsultantId) {
+        // For consultant coverage, check if there's a matching leave for the absent consultant
+        matchingLeave = await prisma.leave.findFirst({
+          where: {
+            clinicianId: cr.absentConsultantId,
+            date: cr.date,
+            OR: [
+              { session: cr.session },
+              { session: 'FULL' }
+            ]
+          }
+        });
+      } else if (cr.absentRegistrarId) {
+        // For registrar coverage, check if there's a matching leave for the absent registrar
+        matchingLeave = await prisma.leave.findFirst({
+          where: {
+            clinicianId: cr.absentRegistrarId,
+            date: cr.date,
+            OR: [
+              { session: cr.session },
+              { session: 'FULL' }
+            ]
+          }
+        });
+      }
 
       // If no matching leave exists, delete the coverage request
       if (!matchingLeave) {

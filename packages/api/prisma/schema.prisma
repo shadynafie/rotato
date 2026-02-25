@@ -15,6 +15,7 @@ datasource db {
 // LeaveType: "annual" | "study" | "sick" | "professional"
 // CoverageReason: "leave" | "oncall_conflict" | "manual"
 // CoverageStatus: "pending" | "assigned" | "cancelled"
+// CoverageType: "registrar" | "consultant" (who needs to cover: registrar covers registrar duty, consultant covers consultant duty)
 // NotificationChannel: "email" | "whatsapp_stub"
 // NotificationType: "change" | "digest" | "test"
 // NotificationStatus: "pending" | "sent" | "failed"
@@ -50,14 +51,16 @@ model Clinician {
   coverageRequestsAsConsultant CoverageRequest[] @relation("CoverageConsultant")
   coverageAssignmentsAsRegistrar CoverageRequest[] @relation("CoverageRegistrar")
   coverageRequestsAsAbsent CoverageRequest[] @relation("CoverageAbsent")
+  coverageRequestsAsAbsentConsultant CoverageRequest[] @relation("CoverageAbsentConsultant")
+  coverageAssignmentsAsConsultant CoverageRequest[] @relation("CoverageAssignedConsultant")
 }
 
 model Duty {
-  id                Int           @id @default(autoincrement())
-  name              String
-  color             String?
-  requiresRegistrar Boolean       @default(false)
-  active            Boolean       @default(true)
+  id               Int           @id @default(autoincrement())
+  name             String
+  color            String?
+  requiresCoverage Boolean       @default(true)
+  active           Boolean       @default(true)
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   jobPlanAm         JobPlanWeek[] @relation("JobPlanWeek_amDuty")
@@ -236,16 +239,24 @@ model CoverageRequest {
   id                  Int        @id @default(autoincrement())
   date                DateTime
   session             String     // "AM" | "PM"
-  consultantId        Int?       // Optional: null for independent registrar duties
+  type                String     @default("registrar") // "registrar" | "consultant" - who needs to cover
+  consultantId        Int?       // For registrar coverage: the consultant being supported
   consultant          Clinician? @relation("CoverageConsultant", fields: [consultantId], references: [id])
   dutyId              Int
   duty                Duty       @relation(fields: [dutyId], references: [id])
   reason              String     // "leave" | "oncall_conflict" | "manual"
   status              String     @default("pending") // "pending" | "assigned" | "cancelled"
-  absentRegistrarId   Int?       // The registrar whose absence caused this coverage need
+  // For registrar coverage: the absent registrar
+  absentRegistrarId   Int?
   absentRegistrar     Clinician? @relation("CoverageAbsent", fields: [absentRegistrarId], references: [id])
+  // For consultant coverage: the absent consultant (on-call or on leave)
+  absentConsultantId  Int?
+  absentConsultant    Clinician? @relation("CoverageAbsentConsultant", fields: [absentConsultantId], references: [id])
+  // Assignment fields - registrar or consultant depending on type
   assignedRegistrarId Int?
   assignedRegistrar   Clinician? @relation("CoverageRegistrar", fields: [assignedRegistrarId], references: [id])
+  assignedConsultantId Int?
+  assignedConsultant  Clinician? @relation("CoverageAssignedConsultant", fields: [assignedConsultantId], references: [id])
   assignedBy          Int?
   assignedAt          DateTime?
   note                String?
@@ -253,8 +264,11 @@ model CoverageRequest {
   updatedAt           DateTime   @updatedAt
 
   @@unique([date, session, dutyId, absentRegistrarId])
+  @@unique([date, session, dutyId, absentConsultantId])
   @@index([date])
   @@index([status])
+  @@index([type])
   @@index([absentRegistrarId])
+  @@index([absentConsultantId])
   @@index([consultantId])
 }

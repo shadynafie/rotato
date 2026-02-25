@@ -69,6 +69,10 @@ Returns `isOpen`, `editingId`, `isEditing`, `form`, `updateField`, `openCreate`,
 ### Backend Services (`packages/api/src/services/`)
 - `oncallCalculator.ts` - Shared `getOncallClinicianForDate()` function used by both rotaGenerator and scheduleComputer
 - `crudService.ts` - `createWithAudit()`, `updateWithAudit()`, `deleteWithAudit()` wrappers for consistent audit logging
+- `scheduler.ts` - Automatic monthly rota regeneration using `node-cron`
+- `coverageDetector.ts` - Detects coverage needs when registrars take leave
+- `consultantImpactDetector.ts` - Handles consultant unavailability (frees registrars, creates consultant coverage requests)
+- `coverageSuggester.ts` - Smart scoring algorithm for coverage assignment suggestions
 
 ### Rota Generation Logic
 1. Job plans define Week 1-5 templates per clinician (AM/PM duties)
@@ -77,6 +81,13 @@ Returns `isOpen`, `editingId`, `isEditing`, `form`, `updateField`, `openCreate`,
 4. Entries with `source='manual'`, `source='leave'`, or `source='rest'` are never overwritten
 5. `session` can be 'AM', 'PM', or 'FULL' (on-call spans full day)
 6. Registrar rest days are auto-calculated based on on-call (weekend → Fri/Mon/Tue off, weekday → next day AM=SPA, PM=off)
+
+### Automatic Rota Regeneration (Scheduler)
+- Uses `node-cron` to run on the **1st of each month at 2:00 AM** (Europe/London timezone)
+- Regenerates rota for **current month + 3 months ahead**
+- Manual trigger available via `POST /api/rota/regenerate`
+- Logs to AuditLog with `action: 'scheduled-regenerate'`
+- Started automatically when server boots (`startScheduler()` in server.ts)
 
 ### Slot-Based On-Call System
 - **OnCallSlot**: Abstract positions (Registrar 01-07, Consultant 01-07)
@@ -99,11 +110,26 @@ RotaEntry uniqueness: `[date, clinicianId, session]`
 
 ### Coverage Request System
 - Auto-created when registrar takes leave and has a duty (consultant-supporting or independent)
+- **Only creates requests for duties with `requiresCoverage: true`** (Admin, SPA, MDT are excluded)
 - `absentRegistrarId` tracks which registrar's absence caused the coverage need
+- `absentConsultantId` tracks consultant coverage needs (when consultant is on-call or on leave)
 - `consultantId` is optional (null for independent registrar duties like TULA)
 - `supportingClinicianId` on RotaEntry links registrar manual assignments to consultants
 - Auto-deleted when the associated leave is cancelled
 - Cleanup endpoint: `POST /api/coverage/cleanup-orphaned` removes orphaned requests
+- **Coverage types**: `registrar` (registrar covers registrar duty) or `consultant` (consultant covers consultant duty)
+
+### Duty Configuration
+- `requiresCoverage` (boolean, default: true) - Whether to create coverage requests when clinician is absent
+- Set to `false` for non-clinical duties: Admin, SPA, MDT
+- Coverage detection checks this flag before creating requests
+
+### Coverage Page Filtering
+- Filter chips for **Status** (Pending, Assigned, Cancelled)
+- Filter chips for **Type** (Registrar, Consultant)
+- Filter chips for **Reason** (On Leave, On-call Conflict, Manual)
+- Default view shows only Pending requests
+- Filter summary shows "Showing X of Y requests"
 
 ### Coverage Suggester Scoring Algorithm
 Smart suggestions for coverage assignment using unit pricing model (0-100 scale):
@@ -138,6 +164,30 @@ CORS_ORIGIN=http://localhost:5173
 ```
 
 Default login: `admin@example.com` / `admin123`
+
+## Deployment Notes
+
+### Database Migrations
+When deploying schema changes:
+1. **New columns with defaults**: Safe, existing data preserved
+2. **Column renames**: Use `prisma db push` - drops old column, creates new one (data in that column is lost)
+3. Always backup database before schema changes: `cp prisma/dev.db prisma/dev.db.backup`
+
+### Docker Deployment
+```bash
+# Build and push
+docker build -t your-registry/rota-manager:latest .
+docker push your-registry/rota-manager:latest
+
+# On VPS, after pulling new image:
+docker compose down
+docker compose up -d
+```
+
+### Post-Deployment Checklist
+- Verify scheduler is running: Check logs for `[Scheduler] Monthly rota regeneration scheduled`
+- If schema changed: Run `npx prisma db push` inside container
+- If seed data needed: Run `npx prisma db seed` (updates Admin/SPA/MDT to requiresCoverage: false)
 
 ## Shared Utilities (Single Source of Truth)
 

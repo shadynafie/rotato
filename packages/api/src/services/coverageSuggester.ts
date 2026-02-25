@@ -386,13 +386,225 @@ export async function getSuggestedRegistrars(
   return { available, unavailable };
 }
 
+interface SuggestedConsultant {
+  clinicianId: number;
+  clinicianName: string;
+  score: number;
+  reasons: string[];
+  dutiesIn30Days: number;
+  oncallsIn30Days: number;
+  coveragesIn30Days: number;
+}
+
+interface UnavailableConsultant {
+  clinicianId: number;
+  clinicianName: string;
+  unavailabilityReason: UnavailabilityReason;
+  unavailabilityLabel: string;
+}
+
+interface ConsultantSuggestionResult {
+  available: SuggestedConsultant[];
+  unavailable: UnavailableConsultant[];
+}
+
 /**
- * Auto-assign the best available registrar to a coverage request.
- * Returns the assigned registrar or null if none available.
+ * Get smart suggestions for consultant coverage assignment.
+ *
+ * Similar scoring to registrar coverage but simpler - focuses on:
+ * - Days since last coverage
+ * - On-call activity
+ * - General workload
+ */
+export async function getSuggestedConsultants(
+  request: SuggestionRequest
+): Promise<ConsultantSuggestionResult> {
+  const { date, session, excludeClinicianIds = [] } = request;
+
+  // Get date boundaries for workload calculation (last 30 days)
+  const thirtyDaysAgo = new Date(date);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  // Fetch all active consultants
+  const consultants = await prisma.clinician.findMany({
+    where: {
+      role: 'consultant',
+      active: true,
+      id: { notIn: excludeClinicianIds }
+    }
+  });
+
+  if (consultants.length === 0) {
+    return { available: [], unavailable: [] };
+  }
+
+  const consultantIds = consultants.map(c => c.id);
+
+  // Use computeSchedule to check on-call and leave
+  const schedule = await computeSchedule(date, date);
+  const consultantSchedule = new Map<number, { isOnCall: boolean; isLeave: boolean }>();
+
+  for (const entry of schedule) {
+    if (entry.clinicianRole !== 'consultant') continue;
+    const entrySession = entry.session as string;
+    if (entrySession !== session && entrySession !== 'FULL') continue;
+
+    const existing = consultantSchedule.get(entry.clinicianId) || { isOnCall: false, isLeave: false };
+
+    if (entry.isOncall) existing.isOnCall = true;
+    if (entry.isLeave) existing.isLeave = true;
+
+    consultantSchedule.set(entry.clinicianId, existing);
+  }
+
+  // Check who's already assigned to consultant coverage on this date/session
+  const existingAssignments = await prisma.coverageRequest.findMany({
+    where: {
+      assignedConsultantId: { in: consultantIds },
+      date: date,
+      session: session,
+      status: 'assigned',
+      type: 'consultant'
+    }
+  });
+  const alreadyAssignedIds = new Set(existingAssignments.map(a => a.assignedConsultantId!));
+
+  // Get consultant coverage counts in last 30 days
+  const coverageCounts = await prisma.coverageRequest.groupBy({
+    by: ['assignedConsultantId'],
+    where: {
+      assignedConsultantId: { in: consultantIds },
+      status: 'assigned',
+      type: 'consultant',
+      date: { gte: thirtyDaysAgo, lte: date }
+    },
+    _count: { id: true }
+  });
+  const coverageMap = new Map(
+    coverageCounts.map(w => [w.assignedConsultantId!, w._count.id])
+  );
+
+  // Get duty counts in last 30 days
+  const dutyCounts = await prisma.rotaEntry.groupBy({
+    by: ['clinicianId'],
+    where: {
+      clinicianId: { in: consultantIds },
+      date: { gte: thirtyDaysAgo, lte: date },
+      dutyId: { not: null }
+    },
+    _count: { id: true }
+  });
+  const dutyMap = new Map(
+    dutyCounts.map(d => [d.clinicianId, d._count.id])
+  );
+
+  // Get on-call counts in last 30 days
+  const oncallEntries = await prisma.rotaEntry.findMany({
+    where: {
+      clinicianId: { in: consultantIds },
+      date: { gte: thirtyDaysAgo, lte: date },
+      source: 'oncall'
+    },
+    distinct: ['clinicianId', 'date'],
+    select: {
+      clinicianId: true,
+      date: true
+    }
+  });
+  const oncallMap = new Map<number, number>();
+  for (const entry of oncallEntries) {
+    oncallMap.set(entry.clinicianId, (oncallMap.get(entry.clinicianId) || 0) + 1);
+  }
+
+  const available: SuggestedConsultant[] = [];
+  const unavailable: UnavailableConsultant[] = [];
+
+  for (const consultant of consultants) {
+    const scheduleInfo = consultantSchedule.get(consultant.id);
+
+    // Check unavailability
+    if (scheduleInfo?.isLeave) {
+      unavailable.push({
+        clinicianId: consultant.id,
+        clinicianName: consultant.name,
+        unavailabilityReason: 'leave',
+        unavailabilityLabel: unavailabilityLabels.leave
+      });
+      continue;
+    }
+
+    if (scheduleInfo?.isOnCall) {
+      unavailable.push({
+        clinicianId: consultant.id,
+        clinicianName: consultant.name,
+        unavailabilityReason: 'on_call',
+        unavailabilityLabel: unavailabilityLabels.on_call
+      });
+      continue;
+    }
+
+    if (alreadyAssignedIds.has(consultant.id)) {
+      unavailable.push({
+        clinicianId: consultant.id,
+        clinicianName: consultant.name,
+        unavailabilityReason: 'already_assigned',
+        unavailabilityLabel: unavailabilityLabels.already_assigned
+      });
+      continue;
+    }
+
+    // Calculate simple score based on workload
+    const coveragesIn30Days = coverageMap.get(consultant.id) || 0;
+    const dutiesIn30Days = dutyMap.get(consultant.id) || 0;
+    const oncallsIn30Days = oncallMap.get(consultant.id) || 0;
+
+    // Simple scoring: lower workload = higher score
+    let rawScore = 60;  // Base score
+    rawScore -= coveragesIn30Days * 10;  // Heavy penalty for recent coverages
+    rawScore -= oncallsIn30Days * 5;
+    rawScore -= dutiesIn30Days * 2;
+
+    // Normalize to 0-100
+    const score = Math.max(0, Math.min(100, rawScore));
+
+    // Build reasons
+    const reasons: string[] = [];
+    if (coveragesIn30Days === 0 && oncallsIn30Days === 0) {
+      reasons.push('Light workload');
+    } else {
+      if (coveragesIn30Days > 0) {
+        reasons.push(`${coveragesIn30Days} coverage${coveragesIn30Days > 1 ? 's' : ''} in 30d`);
+      }
+      if (oncallsIn30Days > 0) {
+        reasons.push(`${oncallsIn30Days} on-call${oncallsIn30Days > 1 ? 's' : ''} in 30d`);
+      }
+    }
+
+    available.push({
+      clinicianId: consultant.id,
+      clinicianName: consultant.name,
+      score,
+      reasons,
+      dutiesIn30Days,
+      oncallsIn30Days,
+      coveragesIn30Days
+    });
+  }
+
+  // Sort by score descending
+  available.sort((a, b) => b.score - a.score);
+
+  return { available, unavailable };
+}
+
+/**
+ * Auto-assign the best available clinician to a coverage request.
+ * For registrar coverage: assigns best registrar
+ * For consultant coverage: assigns best consultant
  */
 export async function autoAssignCoverage(
   coverageRequestId: number
-): Promise<{ success: boolean; assignedTo?: SuggestedRegistrar; error?: string }> {
+): Promise<{ success: boolean; assignedTo?: SuggestedRegistrar | SuggestedConsultant; error?: string }> {
   const request = await prisma.coverageRequest.findUnique({
     where: { id: coverageRequestId }
   });
@@ -405,27 +617,54 @@ export async function autoAssignCoverage(
     return { success: false, error: 'Coverage request is not pending' };
   }
 
-  const result = await getSuggestedRegistrars({
-    date: new Date(request.date),
-    session: request.session as Session
-  });
+  if (request.type === 'consultant') {
+    // Consultant coverage - find best consultant
+    const result = await getSuggestedConsultants({
+      date: new Date(request.date),
+      session: request.session as Session,
+      excludeClinicianIds: request.absentConsultantId ? [request.absentConsultantId] : []
+    });
 
-  if (result.available.length === 0) {
-    return { success: false, error: 'No available registrars' };
-  }
-
-  const bestMatch = result.available[0];
-
-  await prisma.coverageRequest.update({
-    where: { id: coverageRequestId },
-    data: {
-      assignedRegistrarId: bestMatch.clinicianId,
-      status: 'assigned',
-      assignedAt: new Date()
+    if (result.available.length === 0) {
+      return { success: false, error: 'No available consultants' };
     }
-  });
 
-  return { success: true, assignedTo: bestMatch };
+    const bestMatch = result.available[0];
+
+    await prisma.coverageRequest.update({
+      where: { id: coverageRequestId },
+      data: {
+        assignedConsultantId: bestMatch.clinicianId,
+        status: 'assigned',
+        assignedAt: new Date()
+      }
+    });
+
+    return { success: true, assignedTo: bestMatch };
+  } else {
+    // Registrar coverage - find best registrar
+    const result = await getSuggestedRegistrars({
+      date: new Date(request.date),
+      session: request.session as Session
+    });
+
+    if (result.available.length === 0) {
+      return { success: false, error: 'No available registrars' };
+    }
+
+    const bestMatch = result.available[0];
+
+    await prisma.coverageRequest.update({
+      where: { id: coverageRequestId },
+      data: {
+        assignedRegistrarId: bestMatch.clinicianId,
+        status: 'assigned',
+        assignedAt: new Date()
+      }
+    });
+
+    return { success: true, assignedTo: bestMatch };
+  }
 }
 
 /**

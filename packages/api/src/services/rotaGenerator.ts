@@ -1,8 +1,12 @@
 import { prisma } from '../prisma.js';
 import type { Session, RotaSource } from '../types/enums.js';
 import type { Duty } from '@prisma/client';
-import { formatDateString, dateRange, weekOfMonth, getDayOfWeek } from '../utils/dateHelpers.js';
+import { formatDateString, dateRange, weekOfMonth, getDayOfWeek, isWeekday } from '../utils/dateHelpers.js';
 import { getOncallClinicianForDate, type SlotBasedData } from './oncallCalculator.js';
+import {
+  detectConsultantImpact,
+  createConsultantCoverageRequests
+} from './consultantImpactDetector.js';
 
 // Rest day entry type
 interface RestDayEntry {
@@ -295,6 +299,40 @@ export async function generateRota(from: Date, to: Date) {
               await prisma.rotaEntry.create({ data: payload });
             }
           }
+        }
+      }
+    }
+  }
+
+  // ============================================
+  // Detect consultant on-call impact:
+  // Free registrars and create consultant coverage requests
+  // This runs AFTER job plan generation so entries exist to be deleted
+  // ============================================
+  const processedConsultantOncall = new Set<string>();
+
+  for (const date of dateRange(from, to)) {
+    // Only process weekdays for on-call impact
+    if (!isWeekday(date)) continue;
+
+    const oncallConsultantId = getOncallClinicianForDate(date, 'consultant', consultantData);
+    if (oncallConsultantId) {
+      const dateStr = formatDateString(date);
+      const key = `${dateStr}-${oncallConsultantId}`;
+
+      if (!processedConsultantOncall.has(key)) {
+        processedConsultantOncall.add(key);
+
+        // Detect impact for FULL day (consultant on-call is full day)
+        const { consultantNeeds } = await detectConsultantImpact(
+          oncallConsultantId,
+          date,
+          'FULL',
+          'oncall_conflict'
+        );
+
+        if (consultantNeeds.length > 0) {
+          await createConsultantCoverageRequests(consultantNeeds);
         }
       }
     }

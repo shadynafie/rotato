@@ -22,6 +22,7 @@ import { auditRoutes } from './routes/audit.js';
 import { scheduleRoutes } from './routes/schedule.js';
 import { userRoutes } from './routes/users.js';
 import { coverageRoutes } from './routes/coverage.js';
+import { startScheduler } from './services/scheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -85,6 +86,8 @@ app
   .listen({ port: env.port, host: '0.0.0.0' })
   .then(() => {
     app.log.info(`API listening on ${env.port}`);
+    // Start the scheduler for automatic monthly rota regeneration
+    startScheduler();
   })
   .catch((err) => {
     app.log.error(err);

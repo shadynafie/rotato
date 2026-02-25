@@ -29,7 +29,7 @@ export interface Duty {
   id: number;
   name: string;
   color?: string | null;
-  requiresRegistrar?: boolean;
+  requiresCoverage?: boolean;
 }
 
 export interface User {
