@@ -281,11 +281,11 @@ export const CoveragePage: React.FC = () => {
   const filteredAndSortedData = useMemo(() => {
     const data = listQuery.data || [];
 
-    // Apply filters
+    // Apply filters - if no chips selected in a category, nothing matches
     const filtered = data.filter(r => {
-      const statusMatch = statusFilters.length === 0 || statusFilters.includes(r.status);
-      const typeMatch = typeFilters.length === 0 || typeFilters.includes(r.type || 'registrar');
-      const reasonMatch = reasonFilters.length === 0 || reasonFilters.includes(r.reason);
+      const statusMatch = statusFilters.includes(r.status);
+      const typeMatch = typeFilters.includes(r.type || 'registrar');
+      const reasonMatch = reasonFilters.includes(r.reason);
       return statusMatch && typeMatch && reasonMatch;
     });
 
