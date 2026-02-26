@@ -109,6 +109,28 @@ export function getMonthDaysStr(dateStr: string): string[] {
 }
 
 // ============================================
+// Week of month calculation (for job plans)
+// ============================================
+
+/**
+ * Get the week number of the month (1-5).
+ * Used for job plan matching.
+ */
+export function weekOfMonth(date: Date): number {
+  const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+  const dayOfMonth = date.getDate();
+  const adjusted = dayOfMonth + firstDay.getDay();
+  return Math.ceil(adjusted / 7);
+}
+
+/**
+ * Get the week of month from a date string.
+ */
+export function weekOfMonthStr(dateStr: string): number {
+  return weekOfMonth(new Date(dateStr));
+}
+
+// ============================================
 // Formatting functions
 // ============================================
 

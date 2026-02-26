@@ -15,6 +15,7 @@ import {
   getWeekDatesStr,
   getMonthStartStr,
   getMonthEndStr,
+  weekOfMonthStr,
 } from '../utils/dateHelpers';
 
 interface ScheduleEntry {
@@ -424,7 +425,9 @@ export const PublicViewPage: React.FC = () => {
             {view === 'month' && formatMonthYear(selectedDate)}
           </Text>
           <Text style={{ fontSize: '1.0625rem', color: '#86868b' }}>
-            Team schedule (read-only view)
+            {view === 'month'
+              ? 'Team schedule (read-only view)'
+              : `Team schedule — Week ${weekOfMonthStr(selectedDate)} (read-only view)`}
           </Text>
         </Box>
 
