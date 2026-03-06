@@ -17,7 +17,6 @@ import {
   getMonthStartStr,
   getMonthDaysStr,
   formatWeekDayHeader,
-  weekOfMonthStr,
 } from '../utils/dateHelpers';
 
 interface ScheduleEntry {
@@ -586,11 +585,7 @@ export const CalendarPage: React.FC = () => {
             )}
           </Group>
           <Text style={{ fontSize: '1.0625rem', color: '#86868b' }}>
-            {view === 'month'
-              ? 'Monthly overview'
-              : view === 'week'
-                ? `Weekly schedule (Week ${weekOfMonthStr(selectedDate)})`
-                : (isToday(selectedDate) ? `Today's rota schedule (Week ${weekOfMonthStr(selectedDate)})` : `Rota schedule (Week ${weekOfMonthStr(selectedDate)})`)}
+            {view === 'month' ? 'Monthly overview' : view === 'week' ? 'Weekly schedule' : (isToday(selectedDate) ? "Today's rota schedule" : 'Rota schedule')}
           </Text>
         </Box>
         <Group gap="sm">

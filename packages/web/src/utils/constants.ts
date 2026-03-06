@@ -10,6 +10,8 @@ export const LEAVE_TYPES = [
   { value: 'study', label: 'Study Leave' },
   { value: 'sick', label: 'Sick Leave' },
   { value: 'professional', label: 'Professional Leave' },
+  { value: 'paternity', label: 'Paternity Leave' },
+  { value: 'maternity', label: 'Maternity Leave' },
 ] as const;
 
 /**

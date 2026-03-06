@@ -610,8 +610,8 @@ export const OnCallSlotsPage: React.FC = () => {
     const cycleLen = data.slots.registrar.length * 7;
     const numWeeks = data.slots.registrar.length;
 
-    // Day labels for registrar on-call (always starts Friday)
-    const dayLabels = ['Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu'];
+    // Get dynamic day labels based on start date
+    const dayLabels = getDayLabelsFromDate(regStartDate);
 
     // Group pattern by weeks (7 days each)
     const weeks: { dayOfCycle: number; slotPosition: number }[][] = [];
@@ -727,8 +727,7 @@ export const OnCallSlotsPage: React.FC = () => {
                         const slotName =
                           data?.slots.registrar.find((s) => s.position === day.slotPosition)?.name ||
                           `Slot ${day.slotPosition}`;
-                        // Weekend is Sat (index 1) and Sun (index 2) when week starts on Friday
-                        const isWeekend = dayIdx === 1 || dayIdx === 2;
+                        const isWeekend = isWeekendDay(dayIdx, regStartDate);
                         return (
                           <Table.Td
                             key={day.dayOfCycle}
@@ -778,8 +777,7 @@ export const OnCallSlotsPage: React.FC = () => {
   // Pattern Editor Modal
   const renderPatternModal = () => {
     const cycleLen = (data?.slots.registrar.length ?? 0) * 7;
-    // Use fixed Friday-start labels
-    const modalDayLabels = ['Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu'];
+    const modalDayLabels = getDayLabelsFromDate(regStartDate);
     return (
     <Modal
       opened={patternModalOpen}

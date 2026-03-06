@@ -33,7 +33,7 @@ const COLOR_SWATCHES = [
   { color: '#8b5cf6', name: 'Violet' },
 ];
 
-type Duty = { id: number; name: string; color?: string | null; requiresCoverage?: boolean };
+type Duty = { id: number; name: string; color?: string | null; requiresRegistrar?: boolean };
 
 const fetchDuties = async () => {
   const res = await api.get<Duty[]>('/api/duties');
@@ -43,7 +43,7 @@ const fetchDuties = async () => {
 const defaultForm = {
   name: '',
   color: '#0071e3',
-  requiresCoverage: true,
+  requiresRegistrar: false,
 };
 
 export const DutiesPage: React.FC = () => {
@@ -83,7 +83,7 @@ export const DutiesPage: React.FC = () => {
       id: d.id,
       name: d.name,
       color: d.color || '#0071e3',
-      requiresCoverage: d.requiresCoverage ?? true,
+      requiresRegistrar: d.requiresRegistrar || false,
     });
   };
 
@@ -132,7 +132,7 @@ export const DutiesPage: React.FC = () => {
             <Table.Thead>
               <Table.Tr style={{ backgroundColor: '#fafafa' }}>
                 <Table.Th>Duty Name</Table.Th>
-                <Table.Th style={{ width: 140 }}>Coverage</Table.Th>
+                <Table.Th style={{ width: 140 }}>Registrar</Table.Th>
                 <Table.Th style={{ width: 80 }}>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -146,13 +146,9 @@ export const DutiesPage: React.FC = () => {
                     </Group>
                   </Table.Td>
                   <Table.Td>
-                    {d.requiresCoverage !== false ? (
-                      <Badge variant="light" color="green" radius="md" size="sm">
+                    {d.requiresRegistrar && (
+                      <Badge variant="light" color="grape" radius="md" size="sm">
                         Required
-                      </Badge>
-                    ) : (
-                      <Badge variant="light" color="gray" radius="md" size="sm">
-                        Not Required
                       </Badge>
                     )}
                   </Table.Td>
@@ -220,11 +216,11 @@ export const DutiesPage: React.FC = () => {
           </Box>
           <Box mb={24}>
             <Switch
-              label="Requires Coverage"
-              description="Create coverage requests when clinician is absent from this duty"
-              checked={modal.form.requiresCoverage ?? true}
-              onChange={(e) => modal.updateField('requiresCoverage', e.currentTarget.checked)}
-              color="green"
+              label="Requires Registrar"
+              description="This activity needs registrar coverage when scheduled"
+              checked={modal.form.requiresRegistrar || false}
+              onChange={(e) => modal.updateField('requiresRegistrar', e.currentTarget.checked)}
+              color="grape"
             />
           </Box>
           <Group justify="flex-end" gap="sm">

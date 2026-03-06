@@ -9,13 +9,6 @@ import {
   createCoverageRequests,
   cancelCoverageRequestsForLeave
 } from '../services/coverageDetector.js';
-import {
-  detectConsultantImpact,
-  detectConsultantImpactForRange,
-  createConsultantCoverageRequests,
-  cancelConsultantCoverageRequestsForLeave,
-  restoreRegistrarEntriesForConsultant
-} from '../services/consultantImpactDetector.js';
 
 const leaveSchema = z.object({
   clinicianId: z.number(),
@@ -65,12 +58,6 @@ export async function leaveRoutes(app: FastifyInstance) {
 
   app.post('/api/leaves', { preHandler: requireAuth }, async (request) => {
     const body = leaveSchema.parse(request.body);
-
-    // Get the clinician to determine their role
-    const clinician = await prisma.clinician.findUnique({
-      where: { id: body.clinicianId }
-    });
-
     const created = await prisma.leave.create({
       data: { ...body, date: body.date }
     });
@@ -82,35 +69,10 @@ export async function leaveRoutes(app: FastifyInstance) {
       after: created
     });
 
-    if (clinician?.role === 'registrar') {
-      // Detect and create coverage requests for registrar leave
-      const needs = await detectCoverageNeedsForClinician(body.clinicianId, body.date, body.date);
-      if (needs.length > 0) {
-        await createCoverageRequests(needs);
-      }
-    } else if (clinician?.role === 'consultant') {
-      // Detect consultant impact: free registrars and create consultant coverage requests
-      const { consultantNeeds, freedRegistrars } = await detectConsultantImpact(
-        body.clinicianId,
-        body.date,
-        body.session,
-        'leave'
-      );
-
-      if (consultantNeeds.length > 0) {
-        await createConsultantCoverageRequests(consultantNeeds);
-      }
-
-      // Log freed registrars for audit trail
-      if (freedRegistrars.length > 0) {
-        await logAudit({
-          actorUserId: request.user?.sub,
-          action: 'consultant-leave-impact',
-          entity: 'leave',
-          entityId: created.id,
-          after: { consultantId: body.clinicianId, freedRegistrars }
-        });
-      }
+    // Detect and create coverage requests for this leave
+    const needs = await detectCoverageNeedsForClinician(body.clinicianId, body.date, body.date);
+    if (needs.length > 0) {
+      await createCoverageRequests(needs);
     }
 
     return created;
@@ -160,40 +122,9 @@ export async function leaveRoutes(app: FastifyInstance) {
 
     // Detect and create coverage requests for the date range
     if (created.length > 0) {
-      // Get the clinician to determine their role
-      const clinician = await prisma.clinician.findUnique({
-        where: { id: body.clinicianId }
-      });
-
-      if (clinician?.role === 'registrar') {
-        const needs = await detectCoverageNeedsForClinician(body.clinicianId, body.fromDate, body.toDate);
-        if (needs.length > 0) {
-          await createCoverageRequests(needs);
-        }
-      } else if (clinician?.role === 'consultant') {
-        // Detect consultant impact for the date range
-        const { consultantNeeds, freedRegistrars } = await detectConsultantImpactForRange(
-          body.clinicianId,
-          body.fromDate,
-          body.toDate,
-          body.session,
-          'leave'
-        );
-
-        if (consultantNeeds.length > 0) {
-          await createConsultantCoverageRequests(consultantNeeds);
-        }
-
-        // Log freed registrars for audit trail
-        if (freedRegistrars.length > 0) {
-          await logAudit({
-            actorUserId: request.user?.sub,
-            action: 'consultant-leave-impact',
-            entity: 'leave',
-            entityId: 0,
-            after: { consultantId: body.clinicianId, freedRegistrars, dateRange: { from: body.fromDate, to: body.toDate } }
-          });
-        }
+      const needs = await detectCoverageNeedsForClinician(body.clinicianId, body.fromDate, body.toDate);
+      if (needs.length > 0) {
+        await createCoverageRequests(needs);
       }
     }
 
@@ -202,34 +133,15 @@ export async function leaveRoutes(app: FastifyInstance) {
 
   app.delete('/api/leaves/:id', { preHandler: requireAuth }, async (request) => {
     const id = Number((request.params as { id: string }).id);
-    const before = await prisma.leave.findUnique({
-      where: { id },
-      include: { clinician: true }
-    });
+    const before = await prisma.leave.findUnique({ where: { id } });
 
     if (before) {
-      if (before.clinician.role === 'registrar') {
-        // Cancel any coverage requests associated with this registrar leave
-        await cancelCoverageRequestsForLeave(
-          before.clinicianId,
-          before.date,
-          before.session as Session
-        );
-      } else if (before.clinician.role === 'consultant') {
-        // Cancel consultant coverage requests
-        await cancelConsultantCoverageRequestsForLeave(
-          before.clinicianId,
-          before.date,
-          before.session as 'AM' | 'PM' | 'FULL'
-        );
-
-        // Restore registrar entries that were deleted when consultant took leave
-        await restoreRegistrarEntriesForConsultant(
-          before.clinicianId,
-          before.date,
-          before.session as 'AM' | 'PM' | 'FULL'
-        );
-      }
+      // Cancel any coverage requests associated with this leave
+      await cancelCoverageRequestsForLeave(
+        before.clinicianId,
+        before.date,
+        before.session as Session
+      );
     }
 
     await prisma.leave.delete({ where: { id } });

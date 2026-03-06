@@ -173,39 +173,31 @@ export async function detectCoverageNeedsForClinician(
 
       // Priority: Manual entry takes precedence over job plan
       if (manualAm) {
-        // Check if duty requires coverage
-        const duty = await prisma.duty.findUnique({ where: { id: manualAm.dutyId } });
-        if (duty?.requiresCoverage !== false) {
-          const needKey = `${dateStr}-AM-${manualAm.dutyId}-${manualAm.supportingClinicianId || 'independent'}`;
-          if (!addedNeeds.has(needKey)) {
-            needs.push({
-              date: leaveDate,
-              session: 'AM',
-              consultantId: manualAm.supportingClinicianId,  // null for independent duties
-              dutyId: manualAm.dutyId,
-              reason: 'leave',
-              absentRegistrarId: clinicianId
-            });
-            addedNeeds.add(needKey);
-          }
+        const needKey = `${dateStr}-AM-${manualAm.dutyId}-${manualAm.supportingClinicianId || 'independent'}`;
+        if (!addedNeeds.has(needKey)) {
+          needs.push({
+            date: leaveDate,
+            session: 'AM',
+            consultantId: manualAm.supportingClinicianId,  // null for independent duties
+            dutyId: manualAm.dutyId,
+            reason: 'leave',
+            absentRegistrarId: clinicianId
+          });
+          addedNeeds.add(needKey);
         }
       } else if (plan?.amDutyId) {
-        // Check if duty requires coverage
-        const duty = await prisma.duty.findUnique({ where: { id: plan.amDutyId } });
-        if (duty?.requiresCoverage !== false) {
-          // Fall back to job plan
-          const needKey = `${dateStr}-AM-${plan.amDutyId}-${plan.amSupportingClinicianId || 'independent'}`;
-          if (!addedNeeds.has(needKey)) {
-            needs.push({
-              date: leaveDate,
-              session: 'AM',
-              consultantId: plan.amSupportingClinicianId,  // null for independent duties
-              dutyId: plan.amDutyId,
-              reason: 'leave',
-              absentRegistrarId: clinicianId
-            });
-            addedNeeds.add(needKey);
-          }
+        // Fall back to job plan
+        const needKey = `${dateStr}-AM-${plan.amDutyId}-${plan.amSupportingClinicianId || 'independent'}`;
+        if (!addedNeeds.has(needKey)) {
+          needs.push({
+            date: leaveDate,
+            session: 'AM',
+            consultantId: plan.amSupportingClinicianId,  // null for independent duties
+            dutyId: plan.amDutyId,
+            reason: 'leave',
+            absentRegistrarId: clinicianId
+          });
+          addedNeeds.add(needKey);
         }
       }
     }
@@ -216,39 +208,31 @@ export async function detectCoverageNeedsForClinician(
 
       // Priority: Manual entry takes precedence over job plan
       if (manualPm) {
-        // Check if duty requires coverage
-        const duty = await prisma.duty.findUnique({ where: { id: manualPm.dutyId } });
-        if (duty?.requiresCoverage !== false) {
-          const needKey = `${dateStr}-PM-${manualPm.dutyId}-${manualPm.supportingClinicianId || 'independent'}`;
-          if (!addedNeeds.has(needKey)) {
-            needs.push({
-              date: leaveDate,
-              session: 'PM',
-              consultantId: manualPm.supportingClinicianId,  // null for independent duties
-              dutyId: manualPm.dutyId,
-              reason: 'leave',
-              absentRegistrarId: clinicianId
-            });
-            addedNeeds.add(needKey);
-          }
+        const needKey = `${dateStr}-PM-${manualPm.dutyId}-${manualPm.supportingClinicianId || 'independent'}`;
+        if (!addedNeeds.has(needKey)) {
+          needs.push({
+            date: leaveDate,
+            session: 'PM',
+            consultantId: manualPm.supportingClinicianId,  // null for independent duties
+            dutyId: manualPm.dutyId,
+            reason: 'leave',
+            absentRegistrarId: clinicianId
+          });
+          addedNeeds.add(needKey);
         }
       } else if (plan?.pmDutyId) {
-        // Check if duty requires coverage
-        const duty = await prisma.duty.findUnique({ where: { id: plan.pmDutyId } });
-        if (duty?.requiresCoverage !== false) {
-          // Fall back to job plan
-          const needKey = `${dateStr}-PM-${plan.pmDutyId}-${plan.pmSupportingClinicianId || 'independent'}`;
-          if (!addedNeeds.has(needKey)) {
-            needs.push({
-              date: leaveDate,
-              session: 'PM',
-              consultantId: plan.pmSupportingClinicianId,  // null for independent duties
-              dutyId: plan.pmDutyId,
-              reason: 'leave',
-              absentRegistrarId: clinicianId
-            });
-            addedNeeds.add(needKey);
-          }
+        // Fall back to job plan
+        const needKey = `${dateStr}-PM-${plan.pmDutyId}-${plan.pmSupportingClinicianId || 'independent'}`;
+        if (!addedNeeds.has(needKey)) {
+          needs.push({
+            date: leaveDate,
+            session: 'PM',
+            consultantId: plan.pmSupportingClinicianId,  // null for independent duties
+            dutyId: plan.pmDutyId,
+            reason: 'leave',
+            absentRegistrarId: clinicianId
+          });
+          addedNeeds.add(needKey);
         }
       }
     }

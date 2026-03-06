@@ -7,7 +7,7 @@ import { z } from 'zod';
 const dutySchema = z.object({
   name: z.string(),
   color: z.string().optional(),
-  requiresCoverage: z.boolean().optional(),
+  requiresRegistrar: z.boolean().optional(),
   active: z.boolean().optional()
 });
 
